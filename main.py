@@ -9,6 +9,15 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 app = Flask(__name__)
 
+# Проверка на окружение
+if __name__ == "__main__":
+    # Если переменная окружения FLASK_ENV установлена в 'development', используем встроенный сервер
+    if os.getenv('FLASK_ENV') == 'development':
+        app.run(host="0.0.0.0", port=8080, debug=True)
+    else:
+        app.run(host="0.0.0.0", port=8080, debug=False)  # Запуск через Gunicorn в продакшн
+
+
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
