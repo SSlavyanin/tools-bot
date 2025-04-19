@@ -39,7 +39,7 @@ def handle_generate_tool():
         logging.info(f"[TOOL] Запрос получен: {data}")
         task = data.get("task")
         params = data.get("params")
-        if not task or not params:
+        if not task or params is None:
             return jsonify({"error": "Invalid data"}), 400
         loop = asyncio.get_event_loop()
         tool = loop.run_until_complete(generate_tool(task, params))
