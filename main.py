@@ -57,7 +57,7 @@ async def handle_generate_tool():
 
 # Функция для запуска Flask приложения
 def run_flask():
-    app.run(host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=8080, debug=False)
 
 if __name__ == "__main__":
     run_flask()
