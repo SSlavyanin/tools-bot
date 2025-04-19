@@ -71,21 +71,22 @@ def generate_tool():
             "tools": [{"id": t[0], "name": t[1], "description": t[2]} for t in similar]
         })
 
-    return jsonify({
-        "status": "ask",
-        "message": "Чтобы собрать инструмент, нужны детали.",
-        "questions": [
-            "1. Что должен делать инструмент?",
-            "2. Пример входных данных?",
-            "3. Язык или платформа?",
-            "4. Что должно быть на выходе?"
-        ],
-        "default_suggestions": {
-            "task": "генератор постов в Telegram",
-            "language": "Python",
-            "platform": "Telegram"
-        }
-    })
+return jsonify({
+    "status": "ask",
+    "result": "❓ Чтобы собрать инструмент, нужны уточнения:\n1. Что должен делать инструмент?\n2. Пример входных данных?\n3. Язык или платформа?\n4. Что должно быть на выходе?",
+    "message": "Чтобы собрать инструмент, нужны детали.",
+    "questions": [
+        "1. Что должен делать инструмент?",
+        "2. Пример входных данных?",
+        "3. Язык или платформа?",
+        "4. Что должно быть на выходе?"
+    ],
+    "default_suggestions": {
+        "task": "генератор постов в Telegram",
+        "language": "Python",
+        "platform": "Telegram"
+    }
+})
 
 @app.route("/create_tool", methods=["POST"])
 def create_tool():
