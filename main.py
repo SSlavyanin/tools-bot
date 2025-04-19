@@ -9,6 +9,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 app = Flask(__name__)
 
+FLASK_ENV=development
 # Проверка на окружение
 if __name__ == "__main__":
     # Если переменная окружения FLASK_ENV установлена в 'development', используем встроенный сервер
