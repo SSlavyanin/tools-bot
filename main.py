@@ -1,6 +1,10 @@
 import os
 import sqlite3
+import asyncio
+import nest_asyncio
+nest_asyncio.apply()
 import logging
+import httpx
 from flask import Flask, request, jsonify, send_file
 from zipfile import ZipFile
 from io import BytesIO
