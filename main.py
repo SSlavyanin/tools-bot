@@ -1,26 +1,23 @@
 import sqlite3
 import os
 from flask import Flask, request, jsonify, send_file
-
 from zipfile import ZipFile
 from io import BytesIO
 
 app = Flask(__name__)
-
-# Инициализация базы данных
 DB_PATH = "tools.db"
 
 def init_db():
     if not os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('''
+        c = conn.cursor()
+        c.execute('''
             CREATE TABLE tools (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                description TEXT NOT NULL,
-                code TEXT NOT NULL,
-                task TEXT NOT NULL,
+                name TEXT,
+                description TEXT,
+                code TEXT,
+                task TEXT,
                 language TEXT,
                 platform TEXT
             )
@@ -30,77 +27,78 @@ def init_db():
 
 init_db()
 
-def save_tool_to_db(name, description, code, task, language, platform):
+def save_tool(name, description, code, task, language, platform):
     conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
+    c = conn.cursor()
+    c.execute('''
         INSERT INTO tools (name, description, code, task, language, platform)
         VALUES (?, ?, ?, ?, ?, ?)
     ''', (name, description, code, task, language, platform))
     conn.commit()
     conn.close()
 
-def get_similar_tools(task):
+def find_similar_tools(task):
     conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tools WHERE task LIKE ?", ('%' + task + '%',))
-    tools = cursor.fetchall()
+    c = conn.cursor()
+    c.execute("SELECT id, name, description FROM tools WHERE task LIKE ?", ('%' + task + '%',))
+    result = c.fetchall()
     conn.close()
-    return tools
+    return result
 
-@app.route('/generate_tool', methods=['POST'])
+@app.route("/generate_tool", methods=["POST"])
 def generate_tool():
     data = request.json
-    task = data.get('task')
-    params = data.get('params', {})
+    task = data.get("task", "").lower().strip()
+    params = data.get("params", {})
 
-    # 1. Проверка на наличие похожего шаблона
-    tools = get_similar_tools(task)
-
-    if tools:
+    similar = find_similar_tools(task)
+    if similar:
         return jsonify({
-            "message": f"Нашёл похожий инструмент. Подходит? Или хочешь изменить что-то?",
-            "tools": tools
+            "status": "found",
+            "message": "Нашёл похожие инструменты. Хотите использовать один из них или уточнить задачу?",
+            "tools": [{"id": t[0], "name": t[1], "description": t[2]} for t in similar]
         })
 
-    # 2. Если шаблон не найден, спрашиваем подробности
-    response = {
-        "message": "Чтобы собрать инструмент, нужны детали. Если не знаете, можно выбрать по умолчанию:",
+    return jsonify({
+        "status": "ask",
+        "message": "Чтобы собрать инструмент, нужны детали.",
         "questions": [
-            "1. Что делает инструмент? (например, бот для Telegram, генератор контента)",
-            "2. Пример входных данных? (если не знаете - пропустите)",
-            "3. На каком языке или платформе? (например, Python, Telegram)",
-            "4. Что должно получаться на выходе? (например, сообщение в чат)"
+            "1. Что должен делать инструмент?",
+            "2. Пример входных данных?",
+            "3. Язык или платформа?",
+            "4. Что должно быть на выходе?"
         ],
         "default_suggestions": {
-            "task": "генератор контента для Telegram",
+            "task": "генератор постов в Telegram",
             "language": "Python",
             "platform": "Telegram"
         }
-    }
-    
-    return jsonify(response)
+    })
 
-@app.route('/create_tool', methods=['POST'])
+@app.route("/create_tool", methods=["POST"])
 def create_tool():
     data = request.json
-    task = data.get('task')
-    description = data.get('description', 'Без описания')
-    language = data.get('language', 'Python')
-    platform = data.get('platform', 'Telegram')
-    code = data.get('code')  # Код должен быть передан в запросе
-    
-    # Сохраняем инструмент в базе
-    save_tool_to_db(task, description, code, task, language, platform)
+    name = data.get("name", "Без названия")
+    description = data.get("description", "Без описания")
+    code = data.get("code", "# код не передан")
+    task = data.get("task", "инструмент")
+    language = data.get("language", "Python")
+    platform = data.get("platform", "Telegram")
 
-    # Генерируем ZIP-архив
+    save_tool(name, description, code, task, language, platform)
+
+    # Создание ZIP-архива
     zip_buffer = BytesIO()
     with ZipFile(zip_buffer, 'w') as zip_file:
-        zip_file.writestr(f'{task}.py', code)
-    
+        zip_file.writestr(f"{task}.py", code)
+
     zip_buffer.seek(0)
     return send_file(zip_buffer, as_attachment=True, download_name=f"{task}.zip")
 
-if __name__ == '__main__':
+@app.route("/")
+def home():
+    return "Tools API running!"
+
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host="0.0.0.0", port=port)
