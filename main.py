@@ -1,10 +1,10 @@
 import os
 import asyncio
+import nest_asyncio
+nest_asyncio.apply()
 import logging
 import httpx
 from flask import Flask, request, jsonify
-import nest_asyncio
-nest_asyncio.apply()
 
 # Переменные окружения
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
