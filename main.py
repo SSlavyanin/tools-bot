@@ -36,15 +36,18 @@ def handle_generate_tool():
         return jsonify({"error": "Forbidden"}), 403
     try:
         data = request.get_json()
+        logging.info(f"[TOOL] Запрос получен: {data}")
         task = data.get("task")
         params = data.get("params")
         if not task or not params:
             return jsonify({"error": "Invalid data"}), 400
-        tool = asyncio.run(generate_tool(task, params))
+        loop = asyncio.get_event_loop()
+        tool = loop.run_until_complete(generate_tool(task, params))
         return jsonify(tool)
     except Exception as e:
         logging.error(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 # Главная страница для проверки
 @app.route("/")
