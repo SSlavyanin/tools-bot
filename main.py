@@ -1,10 +1,18 @@
-import sqlite3
 import os
+import sqlite3
+import logging
 from flask import Flask, request, jsonify, send_file
 from zipfile import ZipFile
 from io import BytesIO
 
+# 🔐 Переменные окружения
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+AILEX_SHARED_SECRET = os.getenv("AILEX_SHARED_SECRET")
+
+# 🚀 Flask и логгирование
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+
 DB_PATH = "tools.db"
 
 def init_db():
