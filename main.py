@@ -65,7 +65,7 @@ def find_similar_tools(task):
     return result
 
 # 🧠 Ответ от тулс-бота после первого вопроса 
-def generate_alex_suggestion(task):
+def generate_tools_suggestion(task):
     # Генерация идей для ответа на основе задачи
     suggestions = {
         "генератор паролей": [
@@ -105,6 +105,9 @@ def generate_tool():
         "task": task,
         "step": 1
     }
+
+     # 🧑‍💻 Генерация идей от Tools
+    suggestions = generate_tools_suggestion(task)
 
     return jsonify({
         "status": "ask",
