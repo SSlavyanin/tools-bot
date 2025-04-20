@@ -9,6 +9,9 @@ from flask import Flask, request, jsonify, send_file
 from zipfile import ZipFile
 from io import BytesIO
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
 sessions = {}  # должен быть снаружи
 zip_storage = {}  # user_id: BytesIO
 
