@@ -17,8 +17,13 @@ AILEX_SHARED_SECRET = os.getenv("AILEX_SHARED_SECRET")
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
+# 📦 БД для хранения инструментов
 DB_PATH = "tools.db"
 
+# 🧠 Память для активных сессий (упрощённо — в памяти)
+sessions = {}  # {"user_id": {task, input_example, language, output, step}}
+
+# 📌 Инициализация базы данных
 def init_db():
     if not os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)
@@ -39,6 +44,7 @@ def init_db():
 
 init_db()
 
+# 💾 Сохранение инструмента в БД
 def save_tool(name, description, code, task, language, platform):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -49,6 +55,7 @@ def save_tool(name, description, code, task, language, platform):
     conn.commit()
     conn.close()
 
+# 🔍 Поиск похожих инструментов по задаче
 def find_similar_tools(task):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -57,12 +64,14 @@ def find_similar_tools(task):
     conn.close()
     return result
 
+# 🛠 Первый вход: генерация инструмента или запуск диалога
 @app.route("/generate_tool", methods=["POST"])
 def generate_tool():
     data = request.json
+    user_id = data.get("user_id", "anonymous")  # можно прокидывать из AIlex
     task = data.get("task", "").lower().strip()
-    params = data.get("params", {})
 
+    # 🔎 Поиск похожих
     similar = find_similar_tools(task)
     if similar:
         return jsonify({
@@ -71,47 +80,86 @@ def generate_tool():
             "tools": [{"id": t[0], "name": t[1], "description": t[2]} for t in similar]
         })
 
+    # 🧠 Запуск новой сессии
+    sessions[user_id] = {
+        "task": task,
+        "step": 1
+    }
+
     return jsonify({
         "status": "ask",
-        "result": "❓ Чтобы собрать инструмент, нужны уточнения:\n1. Что должен делать инструмент?\n2. Пример входных данных?\n3. Язык или платформа?\n4. Что должно быть на выходе?",
-        "message": "Чтобы собрать инструмент, нужны детали.",
-        "questions": [
-            "1. Что должен делать инструмент?",
-            "2. Пример входных данных?",
-            "3. Язык или платформа?",
-            "4. Что должно быть на выходе?"
-        ],
-        "default_suggestions": {
-            "task": "генератор постов в Telegram",
-            "language": "Python",
-            "platform": "Telegram"
-        }
+        "message": "❓ Чтобы собрать инструмент, нужны уточнения:\n1. Что должен делать инструмент?",
+        "step": 1
     })
 
-@app.route("/create_tool", methods=["POST"])
-def create_tool():
+# 💬 Продолжение диалога (по шагам)
+@app.route("/answer_tool", methods=["POST"])
+def answer_tool():
     data = request.json
-    name = data.get("name", "Без названия")
-    description = data.get("description", "Без описания")
-    code = data.get("code", "# код не передан")
-    task = data.get("task", "инструмент")
-    language = data.get("language", "Python")
-    platform = data.get("platform", "Telegram")
+    user_id = data.get("user_id", "anonymous")
+    answer = data.get("answer", "").strip()
 
-    save_tool(name, description, code, task, language, platform)
+    session = sessions.get(user_id)
+    if not session:
+        return jsonify({"status": "error", "message": "Сессия не найдена. Начните с /generate_tool."})
 
-    # Создание ZIP-архива
-    zip_buffer = BytesIO()
-    with ZipFile(zip_buffer, 'w') as zip_file:
-        zip_file.writestr(f"{task}.py", code)
+    step = session["step"]
 
-    zip_buffer.seek(0)
-    return send_file(zip_buffer, as_attachment=True, download_name=f"{task}.zip")
+    # 🧩 Сохраняем ответ по шагу
+    if step == 1:
+        session["task"] = answer
+        session["step"] = 2
+        return jsonify({
+            "message": "2. Пример входных данных?",
+            "step": 2
+        })
+    elif step == 2:
+        session["input_example"] = answer
+        session["step"] = 3
+        return jsonify({
+            "message": "3. Язык или платформа?",
+            "step": 3
+        })
+    elif step == 3:
+        session["language"] = answer
+        session["step"] = 4
+        return jsonify({
+            "message": "4. Что должно быть на выходе?",
+            "step": 4
+        })
+    elif step == 4:
+        session["output"] = answer
 
+        # 🧠 Все данные есть — генерируем код-заглушку
+        code = f"# Инструмент: {session['task']}\n# Вход: {session['input_example']}\n# Язык: {session['language']}\n# Выход: {session['output']}\n\nprint('Готовый инструмент!')"
+
+        # 💾 Сохраняем инструмент
+        save_tool(
+            name=session['task'].title(),
+            description=f"Инструмент для: {session['task']}",
+            code=code,
+            task=session['task'],
+            language=session['language'],
+            platform=session['language']
+        )
+
+        # 📦 Создаём ZIP
+        zip_buffer = BytesIO()
+        with ZipFile(zip_buffer, 'w') as zip_file:
+            zip_file.writestr(f"{session['task']}.py", code)
+        zip_buffer.seek(0)
+
+        # 🧹 Очищаем сессию
+        del sessions[user_id]
+
+        return send_file(zip_buffer, as_attachment=True, download_name=f"{session['task']}.zip")
+
+# 🏠 Статус
 @app.route("/")
 def home():
     return "Tools API running!"
 
+# ▶️ Запуск сервера
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
