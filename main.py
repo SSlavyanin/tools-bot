@@ -108,6 +108,7 @@ def generate_tool():
 
      # 🧑‍💻 Генерация идей от Tools
     suggestions = generate_tools_suggestion(task)
+    
 
     return jsonify({
         "status": "ask",
@@ -127,7 +128,8 @@ def answer_tool():
     if not session:
         return jsonify({"status": "error", "message": "Сессия не найдена. Начните с /generate_tool."})
 
-    step = session["step"]
+    session = sessions[user_id]
+    step = session.get("step", 1)
 
     # 🧩 Сохраняем ответ по шагу
     if step == 1:
