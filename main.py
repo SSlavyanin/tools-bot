@@ -13,6 +13,7 @@ from io import BytesIO
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 AILEX_SHARED_SECRET = os.getenv("AILEX_SHARED_SECRET")
 
+
 # 🚀 Flask и логгирование
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -87,9 +88,9 @@ def generate_tools_suggestion(task):
 # 🛠 Первый вход: генерация инструмента или запуск диалога
 @app.route("/generate_tool", methods=["POST"])
 def generate_tool():
-    data = request.json
-    user_id = data.get("user_id", "anonymous")  # можно прокидывать из AIlex
-    task = data.get("task", "").lower().strip()
+    data = request.get_json()
+    user_id = str(data.get("user_id", "anonymous"))
+    task = data.get("task", "")
 
     # 🔎 Поиск похожих
     similar = find_similar_tools(task)
@@ -103,7 +104,8 @@ def generate_tool():
     # 🧠 Запуск новой сессии
     sessions[user_id] = {
         "task": task,
-        "step": 1
+        "step": 1,
+        "answers": {}
     }
 
      # 🧑‍💻 Генерация идей от Tools
@@ -113,7 +115,6 @@ def generate_tool():
     return jsonify({
         "status": "ask",
         "message": "❓ Чтобы собрать инструмент, нужны уточнения:\n1. Что должен делать инструмент?",
-        "suggestions": suggestions,
         "step": 1
     })
 
@@ -128,10 +129,8 @@ def answer_tool():
     if not session:
         return jsonify({"status": "error", "message": "Сессия не найдена. Начните с /generate_tool."})
 
-    session = sessions[user_id]
     step = session.get("step", 1)
 
-    # 🧩 Сохраняем ответ по шагу
     if step == 1:
         session["task"] = answer
         session["step"] = 2
@@ -156,29 +155,39 @@ def answer_tool():
     elif step == 4:
         session["output"] = answer
 
-        # 🧠 Все данные есть — генерируем код-заглушку
-        code = f"# Инструмент: {session['task']}\n# Вход: {session['input_example']}\n# Язык: {session['language']}\n# Выход: {session['output']}\n\nprint('Готовый инструмент!')"
-
-        # 💾 Сохраняем инструмент
-        save_tool(
-            name=session['task'].title(),
-            description=f"Инструмент для: {session['task']}",
-            code=code,
-            task=session['task'],
-            language=session['language'],
-            platform=session['language']
+        # 🧠 Генерация кода-заглушки
+        code = (
+            f"# Инструмент: {session['task']}\n"
+            f"# Вход: {session['input_example']}\n"
+            f"# Язык: {session['language']}\n"
+            f"# Выход: {session['output']}\n\n"
+            f"print('Готовый инструмент!')"
         )
 
-        # 📦 Создаём ZIP
+        # 💾 Сохраняем в zip
         zip_buffer = BytesIO()
         with ZipFile(zip_buffer, 'w') as zip_file:
             zip_file.writestr(f"{session['task']}.py", code)
         zip_buffer.seek(0)
 
-        # 🧹 Очищаем сессию
+        # 🗃 Сохраняем архив в zip_storage
+        zip_storage[user_id] = zip_buffer
+
+        # 🧹 Чистим сессию
         del sessions[user_id]
 
-        return send_file(zip_buffer, as_attachment=True, download_name=f"{session['task']}.zip")
+        return jsonify({
+            "status": "done",
+            "result": f"✅ Инструмент собран! <a href='https://tools-bot.onrender.com/download_tool/{user_id}'>Скачать архив</a>"
+        })
+# роут для загрузки архива
+@app.route("/download_tool/<user_id>")
+def download_tool(user_id):
+    buffer = zip_storage.get(user_id)
+    if not buffer:
+        return "Архив не найден", 404
+    return send_file(buffer, as_attachment=True, download_name=f"{user_id}_tool.zip")
+
 
 # 🏠 Статус
 @app.route("/")
