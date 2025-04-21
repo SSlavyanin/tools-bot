@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import logging
-import httpx
 from flask import Flask, request, jsonify, send_file
 from zipfile import ZipFile
 from io import BytesIO
@@ -9,20 +8,18 @@ from io import BytesIO
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# 🧠 Память для активных сессий
-sessions = {}  # {"user_id": {task, input_example, language, output, step}}
+app = Flask(__name__)
 
-# 🔐 Переменные окружения
+# 🧠 Память сессий
+sessions = {}  # user_id: {history: [...], ready: False, zip_ready: False}
+zip_storage = {}
+
+# 🔐 Переменные
+DB_PATH = "tools.db"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 AILEX_SHARED_SECRET = os.getenv("AILEX_SHARED_SECRET")
 
-# 🚀 Flask и логгирование
-app = Flask(__name__)
-
-# 📦 БД для хранения инструментов
-DB_PATH = "tools.db"
-
-# 📌 Инициализация базы данных
+# 📌 Инициализация БД
 def init_db():
     if not os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)
@@ -40,10 +37,8 @@ def init_db():
         ''')
         conn.commit()
         conn.close()
-
 init_db()
 
-# 💾 Сохранение инструмента в БД
 def save_tool(name, description, code, task, language, platform):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -54,131 +49,49 @@ def save_tool(name, description, code, task, language, platform):
     conn.commit()
     conn.close()
 
-# 🔍 Поиск похожих инструментов по задаче
-def find_similar_tools(task):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT id, name, description FROM tools WHERE task LIKE ?", ('%' + task + '%',))
-    result = c.fetchall()
-    conn.close()
-    return result
+def auto_detect_ready(history):
+    """Простейшая эвристика — считаем готовым, если в истории есть ключевые поля"""
+    text = " ".join(history)
+    return all(word in text.lower() for word in ["вход", "выход", "язык"])
 
-# 🧠 Ответ от тулс-бота после первого вопроса 
-def generate_tools_suggestion(task):
-    # Генерация идей для ответа на основе задачи
-    suggestions = {
-        "генератор паролей": [
-            "Генерация случайных паролей с заданной длиной.",
-            "Автоматическое создание паролей для разных сервисов."
-        ],
-        "конвертер валют": [
-            "Конвертация валют по актуальному курсу.",
-            "Автоматическая проверка и уведомления о курсе."
-        ],
-        "генератор постов": [
-            "Автоматическая генерация текстов для постов в Telegram.",
-            "Подготовка контента для социальных сетей."
-        ]
-    }
-    
-    return suggestions.get(task, ["Уточните задачу."])
-
-# 🛠 Первый вход: генерация инструмента или запуск диалога
 @app.route("/generate_tool", methods=["POST"])
 def generate_tool():
     data = request.get_json()
     user_id = str(data.get("user_id", "anonymous"))
-    task = data.get("task", "")
+    message = data.get("message", "").strip()
 
-    # 🔎 Поиск похожих инструментов
-    similar = find_similar_tools(task)
-    if similar:
-        return jsonify({
-            "status": "found",
-            "message": "Нашёл похожие инструменты. Хотите использовать один из них или уточнить задачу?",
-            "tools": [{"id": t[0], "name": t[1], "description": t[2]} for t in similar]
-        })
+    if not message:
+        return jsonify({"status": "error", "message": "Пустой запрос."})
 
-    # 🧠 Запуск новой сессии
-    sessions[user_id] = {
-        "task": task,
-        "step": 1,
-        "answers": {}
-    }
+    # Инициализация сессии
+    if user_id not in sessions:
+        sessions[user_id] = {"history": [], "ready": False, "zip_ready": False}
 
-    # 🧑‍💻 Генерация идей от Tools
-    suggestions = generate_tools_suggestion(task)
-    
-    return jsonify({
-        "status": "ask",
-        "message": "❓ Чтобы собрать инструмент, нужны уточнения:\n1. Что должен делать инструмент?",
-        "step": 1
-    })
+    sessions[user_id]["history"].append(message)
 
-# 💬 Продолжение диалога (по шагам)
-@app.route("/answer_tool", methods=["POST"])
-def answer_tool():
-    data = request.json
-    user_id = data.get("user_id", "anonymous")
-    answer = data.get("answer", "").strip()
+    # Автоматическая проверка готовности
+    if auto_detect_ready(sessions[user_id]["history"]):
+        sessions[user_id]["ready"] = True
 
-    session = sessions.get(user_id)
-    if not session:
-        return jsonify({"status": "error", "message": "Сессия не найдена. Начните с /generate_tool."})
+    if sessions[user_id]["ready"] and not sessions[user_id]["zip_ready"]:
+        # Генерация базового кода (в будущем — GPT-подсказки)
+        text = "\n".join(sessions[user_id]["history"])
+        code = f"# Сгенерировано из запроса:\n# {text}\n\nprint('Инструмент готов')"
 
-    step = session.get("step", 1)
-
-    if step == 1:
-        session["task"] = answer
-        session["step"] = 2
-        return jsonify({
-            "message": "2. Пример входных данных?",
-            "step": 2
-        })
-    elif step == 2:
-        session["input_example"] = answer
-        session["step"] = 3
-        return jsonify({
-            "message": "3. Язык или платформа?",
-            "step": 3
-        })
-    elif step == 3:
-        session["language"] = answer
-        session["step"] = 4
-        return jsonify({
-            "message": "4. Что должно быть на выходе?",
-            "step": 4
-        })
-    elif step == 4:
-        session["output"] = answer
-
-        # 🧠 Генерация кода-заглушки
-        code = (
-            f"# Инструмент: {session['task']}\n"
-            f"# Вход: {session['input_example']}\n"
-            f"# Язык: {session['language']}\n"
-            f"# Выход: {session['output']}\n\n"
-            f"print('Готовый инструмент!')"
-        )
-
-        # 💾 Сохраняем в zip
         zip_buffer = BytesIO()
         with ZipFile(zip_buffer, 'w') as zip_file:
-            zip_file.writestr(f"{session['task']}.py", code)
+            zip_file.writestr(f"tool_{user_id}.py", code)
         zip_buffer.seek(0)
-
-        # 🗃 Сохраняем архив в zip_storage
         zip_storage[user_id] = zip_buffer
-
-        # 🧹 Чистим сессию
-        del sessions[user_id]
+        sessions[user_id]["zip_ready"] = True
 
         return jsonify({
             "status": "done",
-            "result": f"✅ Инструмент собран! <a href='https://tools-bot.onrender.com/download_tool/{user_id}'>Скачать архив</a>"
+            "message": f"✅ Инструмент собран! <a href='https://tools-bot.onrender.com/download_tool/{user_id}'>Скачать архив</a>"
         })
 
-# роут для загрузки архива
+    return jsonify({"status": "wait", "message": "📩 Принято. Уточняем задачу..."})
+
 @app.route("/download_tool/<user_id>")
 def download_tool(user_id):
     buffer = zip_storage.get(user_id)
@@ -186,7 +99,6 @@ def download_tool(user_id):
         return "Архив не найден", 404
     return send_file(buffer, as_attachment=True, download_name=f"{user_id}_tool.zip")
 
-# 🏠 Статус
 @app.route("/")
 def home():
     return "Tools API running!"
