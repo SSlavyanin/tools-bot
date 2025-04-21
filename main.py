@@ -49,10 +49,10 @@ def save_tool(name, description, code, task, language, platform):
     conn.commit()
     conn.close()
 
-def auto_detect_ready(history):
-    """Простейшая эвристика — считаем готовым, если в истории есть ключевые поля"""
-    text = " ".join(history)
-    return all(word in text.lower() for word in ["вход", "выход", "язык"])
+# def auto_detect_ready(history):
+#     """Простейшая эвристика — считаем готовым, если в истории есть ключевые поля"""
+#     text = " ".join(history)
+#     return all(word in text.lower() for word in ["вход", "выход", "язык"])
 
 @app.route("/generate_tool", methods=["POST"])
 def generate_tool():
@@ -69,12 +69,22 @@ def generate_tool():
 
     sessions[user_id]["history"].append(message)
 
-    # Автоматическая проверка готовности
-    if auto_detect_ready(sessions[user_id]["history"]):
-        sessions[user_id]["ready"] = True
+    # Добавляем новый вопрос, чтобы сразу активировать диалог с пользователем
+    if len(sessions[user_id]["history"]) == 1:
+        return jsonify({
+            "status": "wait",
+            "message": "📩 Принято. Уточняем задачу... Какой инструмент вам нужен?"
+        })
 
+    # Обрабатываем дальнейшие запросы от пользователя
+    if len(sessions[user_id]["history"]) > 1 and not sessions[user_id]["ready"]:
+        return jsonify({
+            "status": "wait",
+            "message": "📩 Принято. Продолжаем уточнять задачу..."
+        })
+
+    # Генерация инструмента, если запрос готов
     if sessions[user_id]["ready"] and not sessions[user_id]["zip_ready"]:
-        # Генерация базового кода (в будущем — GPT-подсказки)
         text = "\n".join(sessions[user_id]["history"])
         code = f"# Сгенерировано из запроса:\n# {text}\n\nprint('Инструмент готов')"
 
@@ -91,6 +101,7 @@ def generate_tool():
         })
 
     return jsonify({"status": "wait", "message": "📩 Принято. Уточняем задачу..."})
+
 
 @app.route("/download_tool/<user_id>")
 def download_tool(user_id):
