@@ -1,8 +1,5 @@
 import os
 import sqlite3
-import asyncio
-import nest_asyncio
-nest_asyncio.apply()
 import logging
 import httpx
 from flask import Flask, request, jsonify, send_file
@@ -12,23 +9,18 @@ from io import BytesIO
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-sessions = {}  # должен быть снаружи
-zip_storage = {}  # user_id: BytesIO
+# 🧠 Память для активных сессий
+sessions = {}  # {"user_id": {task, input_example, language, output, step}}
 
 # 🔐 Переменные окружения
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 AILEX_SHARED_SECRET = os.getenv("AILEX_SHARED_SECRET")
 
-
 # 🚀 Flask и логгирование
 app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
 
 # 📦 БД для хранения инструментов
 DB_PATH = "tools.db"
-
-# 🧠 Память для активных сессий (упрощённо — в памяти)
-sessions = {}  # {"user_id": {task, input_example, language, output, step}}
 
 # 📌 Инициализация базы данных
 def init_db():
@@ -98,7 +90,7 @@ def generate_tool():
     user_id = str(data.get("user_id", "anonymous"))
     task = data.get("task", "")
 
-    # 🔎 Поиск похожих
+    # 🔎 Поиск похожих инструментов
     similar = find_similar_tools(task)
     if similar:
         return jsonify({
@@ -114,10 +106,9 @@ def generate_tool():
         "answers": {}
     }
 
-     # 🧑‍💻 Генерация идей от Tools
+    # 🧑‍💻 Генерация идей от Tools
     suggestions = generate_tools_suggestion(task)
     
-
     return jsonify({
         "status": "ask",
         "message": "❓ Чтобы собрать инструмент, нужны уточнения:\n1. Что должен делать инструмент?",
@@ -186,6 +177,7 @@ def answer_tool():
             "status": "done",
             "result": f"✅ Инструмент собран! <a href='https://tools-bot.onrender.com/download_tool/{user_id}'>Скачать архив</a>"
         })
+
 # роут для загрузки архива
 @app.route("/download_tool/<user_id>")
 def download_tool(user_id):
@@ -193,7 +185,6 @@ def download_tool(user_id):
     if not buffer:
         return "Архив не найден", 404
     return send_file(buffer, as_attachment=True, download_name=f"{user_id}_tool.zip")
-
 
 # 🏠 Статус
 @app.route("/")
