@@ -4,6 +4,8 @@ from flask import Flask, request, jsonify, send_file
 from zipfile import ZipFile
 from io import BytesIO
 import httpx
+import json
+import re
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -20,11 +22,12 @@ async def analyze_message(history):
         {"role": "system", "content": (
             "Ты — ИИ-конструктор инструментов. Получаешь сообщение от пользователя и помогаешь сформулировать задание. "
             "Задавай уточняющие вопросы, если что-то неясно. Когда всё ясно — уточни у пользователя, можно ли начинать генерацию. "
-            "Верни JSON с полями: "
+            "Верни _только_ JSON с полями: "
             "- status: 'need_more_info' или 'ready'; "
             "- reply: твой текст пользователю; "
             "- task: краткое описание задачи (если ready); "
             "- params: словарь параметров (если ready)."
+            "Никакого текста вокруг."
         )}
     ] + [{"role": "user", "content": msg} for msg in history]
 
@@ -42,7 +45,13 @@ async def analyze_message(history):
         result = response.json()
         content = result["choices"][0]["message"]["content"]
         logging.info(f"[OpenRouter] Ответ: {content}")
-        return eval(content)  # Простой парсинг JSON из строки
+        def extract_json(text):       # Простой парсинг JSON из строки
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                return json.loads(match.group(0))
+            raise ValueError("JSON не найден в ответе")
+
+        return extract_json(content)
 
 # 🛠 Примитивная генерация кода (можно позже заменить на умную)
 def generate_code(task, params):
