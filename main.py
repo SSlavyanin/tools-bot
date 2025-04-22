@@ -16,20 +16,32 @@ AILEX_SHARED_SECRET = os.getenv("AILEX_SHARED_SECRET")
 zip_storage = {}
 sessions = {}  # 🧠 Храним историю общения по user_id
 
+# Парсер JSON
+def extract_json(text):
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        return json.loads(match.group(0))
+    raise ValueError("JSON не найден в ответе")
+
 # 🔍 OpenRouter-запрос с нейрочеловеческим промптом
 async def analyze_message(history):
     prompt = [
-        {"role": "system", "content": (
+    {
+        "role": "system",
+        "content": (
             "Ты — ИИ-конструктор инструментов. Получаешь сообщение от пользователя и помогаешь сформулировать задание. "
             "Задавай уточняющие вопросы, если что-то неясно. Когда всё ясно — уточни у пользователя, можно ли начинать генерацию. "
-            "Верни _только_ JSON. "
-            # "- status: 'need_more_info' или 'ready'; "
-            # "- reply: твой текст пользователю; "
-            # "- task: краткое описание задачи (если ready); "
-            # "- params: словарь параметров (если ready)."
-            "Никакого текста вокруг."
-        )}
-    ] + [{"role": "user", "content": msg} for msg in history]
+            "Верни _только_ JSON в виде Python словаря (dict), без обрамляющего текста. "
+            "Поля: \n"
+            "- status: 'need_more_info' или 'ready';\n"
+            "- reply: строка с ответом пользователю;\n"
+            "- task: краткое описание задачи (если ready);\n"
+            "- params: словарь параметров (если ready)."
+        )
+    },
+        {"role": "user", "content": message}
+    ]
+
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -45,12 +57,6 @@ async def analyze_message(history):
         result = response.json()
         content = result["choices"][0]["message"]["content"]
         logging.info(f"[OpenRouter] Ответ: {content}")
-        def extract_json(text):       # Простой парсинг JSON из строки
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            if match:
-                return json.loads(match.group(0))
-            raise ValueError("JSON не найден в ответе")
-
         return extract_json(content)
 
 # 🛠 Примитивная генерация кода (можно позже заменить на умную)
