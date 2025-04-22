@@ -24,9 +24,9 @@ def extract_json(text: str) -> dict:
         json_str = text[start:end]
         return json.loads(json_str)
     except Exception:
-        return None  # ⬅ вместо ValueError — возвращаем None
+        return None  # ⬅️ Вместо ValueError — просто None
 
-    
+
 # 🔍 Обращение к OpenRouter с задачей
 async def analyze_message(text: str):
     prompt = [
@@ -52,7 +52,7 @@ async def analyze_message(text: str):
     }
 
     payload = {
-        "model": "openchat/openchat-7b",  # Можно заменить модель
+        "model": "openchat/openchat-7b",
         "messages": prompt
     }
 
@@ -62,18 +62,16 @@ async def analyze_message(text: str):
         content = result["choices"][0]["message"]["content"]
         logging.info(f"[OpenRouter] Ответ: {content}")
 
-        # Пытаемся распарсить ответ как JSON
-        content = await call_openrouter(text)
         result_dict = extract_json(content)
 
         if not result_dict:
             return {
                 "status": "need_more_info",
-                "reply": content.strip(),  # Возвращаем текст ответа без изменений
+                "reply": content.strip(),  # ⬅️ Возвращаем текст как есть
                 "task": None,
                 "params": None
             }
-    
+
         return {
             "status": result_dict.get("status", "need_more_info"),
             "reply": result_dict.get("reply", content.strip()),
