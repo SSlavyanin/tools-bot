@@ -39,7 +39,7 @@ async def analyze_message(history):
             "- params: словарь параметров (если ready)."
         )
     },
-        {"role": "user", "content": message}
+        {"role": "user", "content": text}
     ]
 
 
