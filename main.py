@@ -22,7 +22,6 @@ def extract_json(text):
     if match:
         return json.loads(match.group(0))
     raise ValueError("JSON не найден в ответе")
-
 # 🔍 Обращение к OpenRouter с задачей
 async def analyze_message(text: str):
     prompt = [
@@ -57,7 +56,19 @@ async def analyze_message(text: str):
         result = response.json()
         content = result["choices"][0]["message"]["content"]
         logging.info(f"[OpenRouter] Ответ: {content}")
-        return extract_json(content)
+
+        # Пытаемся распарсить ответ как JSON
+        result_dict = extract_json(content)
+        status = result_dict.get("status")
+
+        if status == "need_more_info":
+            return result_dict  # Возвращаем с уточнением
+        elif status == "ready":
+            return result_dict  # Возвращаем готовую задачу
+        else:
+            return {"status": "error", "reply": "Неизвестный статус от ИИ."}
+
+            
 
 # 🛠 Генерация простого Python-скрипта
 def generate_code(task, params):
