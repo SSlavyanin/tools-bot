@@ -12,20 +12,28 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 AILEX_SHARED_SECRET = os.getenv("AILEX_SHARED_SECRET")
 
 zip_storage = {}
-sessions = {}  # 🆕 Хранилище сессий
+sessions = {}  # 🧠 Храним историю общения по user_id
 
-# 🔍 OpenRouter-запрос
-async def analyze_message(message: str):
+# 🔍 OpenRouter-запрос с нейрочеловеческим промптом
+async def analyze_message(history):
     prompt = [
-        {"role": "system", "content": "Ты ИИ-помощник. Получи текст задачи и определи, какой инструмент нужно создать. Верни JSON с полями task и params."},
-        {"role": "user", "content": message}
-    ]
+        {"role": "system", "content": (
+            "Ты — ИИ-конструктор инструментов. Получаешь сообщение от пользователя и помогаешь сформулировать задание. "
+            "Задавай уточняющие вопросы, если что-то неясно. Когда всё ясно — уточни у пользователя, можно ли начинать генерацию. "
+            "Верни JSON с полями: "
+            "- status: 'need_more_info' или 'ready'; "
+            "- reply: твой текст пользователю; "
+            "- task: краткое описание задачи (если ready); "
+            "- params: словарь параметров (если ready)."
+        )}
+    ] + [{"role": "user", "content": msg} for msg in history]
+
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "openchat/openchat-7b",  # Можно заменить на другой
+        "model": "openchat/openchat-7b",  # Можно заменить
         "messages": prompt
     }
 
@@ -34,12 +42,15 @@ async def analyze_message(message: str):
         result = response.json()
         content = result["choices"][0]["message"]["content"]
         logging.info(f"[OpenRouter] Ответ: {content}")
-        return eval(content)  # Простой парсинг словаря из строки
+        return eval(content)  # Простой парсинг JSON из строки
 
-# 🆕 Проверка готовности к генерации
-def ready_to_generate(history):
-    text = " ".join(history).lower()
-    return len(history) > 2 and any(kw in text for kw in ["сделай", "нужно", "бот", "код", "инструмент"])
+# 🛠 Примитивная генерация кода (можно позже заменить на умную)
+def generate_code(task, params):
+    lines = [f"# Инструмент: {task}", "# Параметры:"]
+    for k, v in params.items():
+        lines.append(f"# {k}: {v}")
+    lines.append("\nprint('Инструмент готов к работе!')")
+    return "\n".join(lines)
 
 @app.route("/generate_tool", methods=["POST"])
 def generate_tool():
@@ -55,35 +66,39 @@ def generate_tool():
     if not message:
         return jsonify({"status": "error", "message": "Пустой запрос. 🤖 (tулс-бот)"})
 
-    # 🆕 Обработка истории пользователя
+    # 💬 Обновляем историю пользователя
     history = sessions.setdefault(user_id, {"history": []})["history"]
     history.append(message)
 
-    if not ready_to_generate(history):
-        if len(history) == 1:
-            return jsonify({"status": "ok", "message": "👋 Привет! Что хочешь, чтобы я сделал?"})
-        else:
-            return jsonify({"status": "ok", "message": "🛠 Уточни, что именно нужно. Я пока слушаю."})
-
     try:
-        # 🧠 AI-анализ сообщения
-        result = run(analyze_message(" ".join(history)))
-        task = result.get("task", "инструмент")
-        params = result.get("params", {})
+        # 🧠 Отправляем всю историю в нейронку
+        result = run(analyze_message(history))
+        status = result.get("status")
+        reply = result.get("reply", "🤔 Что-то пошло не так.")
 
-        # 🛠 Генерация кода
-        code = f"# Задача: {task}\n# Параметры: {params}\n\nprint('Инструмент готов')"
+        if status == "need_more_info":
+            return jsonify({"status": "ok", "message": reply})
 
-        zip_buffer = BytesIO()
-        with ZipFile(zip_buffer, 'w') as zip_file:
-            zip_file.writestr(f"{task.replace(' ', '_')}.py", code)
-        zip_buffer.seek(0)
-        zip_storage[user_id] = zip_buffer
+        elif status == "ready":
+            task = result.get("task", "инструмент")
+            params = result.get("params", {})
 
-        return jsonify({
-            "status": "done",
-            "message": f"🤖 (tулс-бот) ✅ Инструмент готов! <a href='https://tools-bot.onrender.com/download_tool/{user_id}'>Скачать архив</a>"
-        })
+            # 🔧 Генерация кода на основе задания
+            code = generate_code(task, params)
+
+            zip_buffer = BytesIO()
+            with ZipFile(zip_buffer, 'w') as zip_file:
+                zip_file.writestr(f"{task.replace(' ', '_')}.py", code)
+            zip_buffer.seek(0)
+            zip_storage[user_id] = zip_buffer
+
+            return jsonify({
+                "status": "done",
+                "message": f"🤖 (tулс-бот) ✅ Инструмент готов! <a href='https://tools-bot.onrender.com/download_tool/{user_id}'>Скачать архив</a>"
+            })
+
+        else:
+            return jsonify({"status": "error", "message": "⚠️ Неожиданный статус от ИИ."})
 
     except Exception as e:
         logging.exception("Ошибка генерации")
