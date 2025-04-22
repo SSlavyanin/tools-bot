@@ -17,11 +17,16 @@ zip_storage = {}
 sessions = {}  # 🧠 Храним историю общения по user_id
 
 # 🧠 Парсер JSON из текста
-def extract_json(text):
-    match = re.search(r'\{.*\}', text, re.DOTALL)
-    if match:
-        return json.loads(match.group(0))
-    raise ValueError("JSON не найден в ответе")
+def extract_json(text: str) -> dict:
+    try:
+        start = text.index("{")
+        end = text.rindex("}") + 1
+        json_str = text[start:end]
+        return json.loads(json_str)
+    except Exception:
+        return None  # ⬅ вместо ValueError — возвращаем None
+
+    
 # 🔍 Обращение к OpenRouter с задачей
 async def analyze_message(text: str):
     prompt = [
@@ -58,15 +63,23 @@ async def analyze_message(text: str):
         logging.info(f"[OpenRouter] Ответ: {content}")
 
         # Пытаемся распарсить ответ как JSON
+        content = await call_openrouter(text)
         result_dict = extract_json(content)
-        status = result_dict.get("status")
 
-        if status == "need_more_info":
-            return result_dict  # Возвращаем с уточнением
-        elif status == "ready":
-            return result_dict  # Возвращаем готовую задачу
-        else:
-            return {"status": "error", "reply": "Неизвестный статус от ИИ."}
+        if not result_dict:
+            return {
+                "status": "need_more_info",
+                "reply": content.strip(),  # Возвращаем текст ответа без изменений
+                "task": None,
+                "params": None
+            }
+    
+        return {
+            "status": result_dict.get("status", "need_more_info"),
+            "reply": result_dict.get("reply", content.strip()),
+            "task": result_dict.get("task"),
+            "params": result_dict.get("params"),
+        }
 
             
 
