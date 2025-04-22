@@ -24,7 +24,7 @@ def extract_json(text):
     raise ValueError("JSON не найден в ответе")
 
 # 🔍 OpenRouter-запрос с нейрочеловеческим промптом
-async def analyze_message(history):
+async def analyze_message(text):
     prompt = [
     {
         "role": "system",
@@ -87,7 +87,7 @@ def generate_tool():
 
     try:
         # 🧠 Отправляем всю историю в нейронку
-        result = run(analyze_message(history))
+        result = run(analyze_message(text))
         status = result.get("status")
         reply = result.get("reply", "🤔 Что-то пошло не так.")
 
