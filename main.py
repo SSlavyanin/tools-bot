@@ -16,39 +16,39 @@ AILEX_SHARED_SECRET = os.getenv("AILEX_SHARED_SECRET")
 zip_storage = {}
 sessions = {}  # 🧠 Храним историю общения по user_id
 
-# Парсер JSON
+# 🧠 Парсер JSON из текста
 def extract_json(text):
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
         return json.loads(match.group(0))
     raise ValueError("JSON не найден в ответе")
 
-# 🔍 OpenRouter-запрос с нейрочеловеческим промптом
-async def analyze_message(text):
+# 🔍 Обращение к OpenRouter с задачей
+async def analyze_message(text: str):
     prompt = [
-    {
-        "role": "system",
-        "content": (
-            "Ты — ИИ-конструктор инструментов. Получаешь сообщение от пользователя и помогаешь сформулировать задание. "
-            "Задавай уточняющие вопросы, если что-то неясно. Когда всё ясно — уточни у пользователя, можно ли начинать генерацию. "
-            "Верни _только_ JSON в виде Python словаря (dict), без обрамляющего текста. "
-            "Поля: \n"
-            "- status: 'need_more_info' или 'ready';\n"
-            "- reply: строка с ответом пользователю;\n"
-            "- task: краткое описание задачи (если ready);\n"
-            "- params: словарь параметров (если ready)."
-        )
-    },
+        {
+            "role": "system",
+            "content": (
+                "Ты — ИИ-конструктор инструментов. Получаешь сообщение от пользователя и помогаешь сформулировать задание. "
+                "Задавай уточняющие вопросы, если что-то неясно. Когда всё ясно — уточни у пользователя, можно ли начинать генерацию. "
+                "Верни _только_ JSON в виде Python словаря (dict), без обрамляющего текста. "
+                "Поля:\n"
+                "- status: 'need_more_info' или 'ready';\n"
+                "- reply: строка с ответом пользователю;\n"
+                "- task: краткое описание задачи (если ready);\n"
+                "- params: словарь параметров (если ready)."
+            )
+        },
         {"role": "user", "content": text}
     ]
-
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
+
     payload = {
-        "model": "openchat/openchat-7b",  # Можно заменить
+        "model": "openchat/openchat-7b",  # Можно заменить модель
         "messages": prompt
     }
 
@@ -59,7 +59,7 @@ async def analyze_message(text):
         logging.info(f"[OpenRouter] Ответ: {content}")
         return extract_json(content)
 
-# 🛠 Примитивная генерация кода (можно позже заменить на умную)
+# 🛠 Генерация простого Python-скрипта
 def generate_code(task, params):
     lines = [f"# Инструмент: {task}", "# Параметры:"]
     for k, v in params.items():
@@ -67,6 +67,7 @@ def generate_code(task, params):
     lines.append("\nprint('Инструмент готов к работе!')")
     return "\n".join(lines)
 
+# 📦 Основной обработчик генерации инструмента
 @app.route("/generate_tool", methods=["POST"])
 def generate_tool():
     from asyncio import run
@@ -81,13 +82,12 @@ def generate_tool():
     if not message:
         return jsonify({"status": "error", "message": "Пустой запрос. 🤖 (tулс-бот)"})
 
-    # 💬 Обновляем историю пользователя
+    # 💬 Обновляем историю
     history = sessions.setdefault(user_id, {"history": []})["history"]
     history.append(message)
 
     try:
-        # 🧠 Отправляем всю историю в нейронку
-        result = run(analyze_message(text))
+        result = run(analyze_message("\n".join(history)))
         status = result.get("status")
         reply = result.get("reply", "🤔 Что-то пошло не так.")
 
@@ -98,7 +98,6 @@ def generate_tool():
             task = result.get("task", "инструмент")
             params = result.get("params", {})
 
-            # 🔧 Генерация кода на основе задания
             code = generate_code(task, params)
 
             zip_buffer = BytesIO()
@@ -119,6 +118,7 @@ def generate_tool():
         logging.exception("Ошибка генерации")
         return jsonify({"status": "error", "message": f"🤖 (tулс-бот) Ошибка: {str(e)}"})
 
+# 📥 Выдача архива
 @app.route("/download_tool/<user_id>")
 def download_tool(user_id):
     buffer = zip_storage.get(user_id)
