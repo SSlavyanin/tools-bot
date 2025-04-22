@@ -12,6 +12,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 AILEX_SHARED_SECRET = os.getenv("AILEX_SHARED_SECRET")
 
 zip_storage = {}
+sessions = {}  # 🆕 Хранилище сессий
 
 # 🔍 OpenRouter-запрос
 async def analyze_message(message: str):
@@ -35,6 +36,11 @@ async def analyze_message(message: str):
         logging.info(f"[OpenRouter] Ответ: {content}")
         return eval(content)  # Простой парсинг словаря из строки
 
+# 🆕 Проверка готовности к генерации
+def ready_to_generate(history):
+    text = " ".join(history).lower()
+    return len(history) > 2 and any(kw in text for kw in ["сделай", "нужно", "бот", "код", "инструмент"])
+
 @app.route("/generate_tool", methods=["POST"])
 def generate_tool():
     from asyncio import run
@@ -49,9 +55,19 @@ def generate_tool():
     if not message:
         return jsonify({"status": "error", "message": "Пустой запрос. 🤖 (tулс-бот)"})
 
+    # 🆕 Обработка истории пользователя
+    history = sessions.setdefault(user_id, {"history": []})["history"]
+    history.append(message)
+
+    if not ready_to_generate(history):
+        if len(history) == 1:
+            return jsonify({"status": "ok", "message": "👋 Привет! Что хочешь, чтобы я сделал?"})
+        else:
+            return jsonify({"status": "ok", "message": "🛠 Уточни, что именно нужно. Я пока слушаю."})
+
     try:
         # 🧠 AI-анализ сообщения
-        result = run(analyze_message(message))
+        result = run(analyze_message(" ".join(history)))
         task = result.get("task", "инструмент")
         params = result.get("params", {})
 
