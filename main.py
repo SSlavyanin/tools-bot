@@ -10,9 +10,6 @@ from aiogram.dispatcher.filters import CommandStart
 from io import BytesIO
 from zipfile import ZipFile
 import httpx
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # 🔐 Токены и ключи
 BOT_TOKEN = os.getenv("TOOLBOT_TOKEN")
