@@ -97,6 +97,16 @@ def create_zip(task, code: str):
     zip_buffer.name = f"{task.replace(' ', '_')}.zip"
     return zip_buffer
 
+# Начало диалога по нажатию кнопки
+@dp.message_handler(commands=["start"])
+async def send_welcome(message: types.Message):
+    if message.get_args() == "tool":
+        # Это сработает, если бот был вызван с параметром start=tool
+        await message.reply("Вы перешли к созданию инструмента! Начни описывать, что тебе нужно.")
+    else:
+        # Это сработает для обычного запуска бота (например, без параметров)
+        await message.reply("Привет! Нажми кнопку ниже, чтобы начать создание инструмента.")
+
 # 🎛 Кнопка "Сделать инструмент"
 @dp.message_handler(commands=["start", "tool"])
 async def start_command(message: types.Message):
