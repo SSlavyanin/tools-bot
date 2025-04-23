@@ -1,10 +1,10 @@
 import os
 import logging
 import json
-import threading
 import httpx
 import asyncio
 import time
+from threading import Thread
 from flask import Flask
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputFile
