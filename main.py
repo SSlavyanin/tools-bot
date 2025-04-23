@@ -2,6 +2,9 @@ import os
 import logging
 import json
 import threading
+import httpx
+import asyncio
+import time
 from flask import Flask
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputFile
@@ -9,7 +12,7 @@ from aiogram.utils import executor
 from aiogram.dispatcher.filters import CommandStart
 from io import BytesIO
 from zipfile import ZipFile
-import httpx
+
 
 # 🔐 Токены и ключи
 BOT_TOKEN = os.getenv("TOOLBOT_TOKEN")
@@ -106,7 +109,7 @@ async def start_command(message: types.Message):
 @dp.callback_query_handler(lambda c: c.data == "make_tool")
 async def handle_tool_request(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
-    sessions[user_id] = []  # начинаем с чистой истории
+    sessions[user_id] = {"history": [], "last_active": time.time()}  # начинаем с чистой истории и метки времени
     await bot.send_message(user_id, "Привет! Опиши, какой инструмент тебе нужен 🧠")
     await callback_query.answer()
 
@@ -116,10 +119,12 @@ async def handle_message(message: types.Message):
     user_id = message.from_user.id
     text = message.text.strip()
 
-    history = sessions.setdefault(user_id, [])
-    history.append(text)
+    # добавляем сообщение в историю и обновляем время активности
+    history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
+    history["history"].append(text)
+    history["last_active"] = time.time()
 
-    result = await analyze_message("\n".join(history))
+    result = await analyze_message("\n".join(history["history"]))
     status = result.get("status")
     reply = result.get("reply")
 
@@ -143,7 +148,25 @@ async def handle_message(message: types.Message):
 def index():
     return "ToolBot работает!"
 
+# 🚀 Функция очистки сессий
+async def cleanup_sessions():
+    while True:
+        now = time.time()
+        to_delete = []
+
+        for user_id, session in sessions.items():
+            last_msg_time = session["last_active"]
+            if now - last_msg_time > 3600:  # 1 час неактивности
+                to_delete.append(user_id)
+
+        for user_id in to_delete:
+            sessions.pop(user_id, None)
+
+        await asyncio.sleep(600)  # проверка каждые 10 минут
+
 # 🚀 Запуск Flask + aiogram
 if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.create_task(cleanup_sessions())  # фоновая задача по очистке
     threading.Thread(target=lambda: executor.start_polling(dp, skip_updates=True)).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
