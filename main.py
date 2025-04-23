@@ -14,6 +14,9 @@ from io import BytesIO
 from zipfile import ZipFile
 
 
+# Настройка логирования
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+
 # 🔐 Токены и ключи
 BOT_TOKEN = os.getenv("TOOLBOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -36,7 +39,6 @@ def extract_json(text: str) -> dict:
     except Exception:
         return None
 
-# 🔍 Анализ сообщения через OpenRouter
 async def analyze_message(history: str):
     prompt = [
         {
@@ -63,21 +65,34 @@ async def analyze_message(history: str):
 
     payload = {"model": "openchat/openchat-7b", "messages": prompt}
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers)
-        result = response.json()
-        content = result["choices"][0]["message"]["content"]
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers)
+            logging.debug(f"Ответ от OpenRouter: {response.text}")  # Логируем ответ
+            response.raise_for_status()  # Проверка статуса ответа
+            result = response.json()
+            content = result["choices"][0]["message"]["content"]
 
-        result_dict = extract_json(content)
-        if not result_dict:
-            return {"status": "need_more_info", "reply": content.strip()}
+            result_dict = extract_json(content)
+            if not result_dict:
+                logging.error("Не удалось извлечь JSON из ответа.")
+                return {"status": "need_more_info", "reply": content.strip()}
 
-        return {
-            "status": result_dict.get("status", "need_more_info"),
-            "reply": result_dict.get("reply", content.strip()),
-            "task": result_dict.get("task"),
-            "params": result_dict.get("params"),
-        }
+            return {
+                "status": result_dict.get("status", "need_more_info"),
+                "reply": result_dict.get("reply", content.strip()),
+                "task": result_dict.get("task"),
+                "params": result_dict.get("params"),
+            }
+
+    except httpx.RequestError as e:
+        logging.error(f"Ошибка при запросе к OpenRouter: {e}")
+        return {"status": "need_more_info", "reply": "Ошибка при запросе к OpenRouter."}
+
+    except Exception as e:
+        logging.error(f"Произошла ошибка: {e}")
+        return {"status": "need_more_info", "reply": "Произошла непредвиденная ошибка."}
+
 
 # 🛠 Генерация кода инструмента
 def generate_code(task, params):
@@ -171,6 +186,7 @@ async def cleanup_sessions():
 
         for user_id in to_delete:
             sessions.pop(user_id, None)
+            logging.info(f"Удалена сессия пользователя {user_id} из-за неактивности.")  # Логируем удаление
 
         await asyncio.sleep(600)  # проверка каждые 10 минут
 
@@ -178,5 +194,7 @@ async def cleanup_sessions():
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.create_task(cleanup_sessions())  # фоновая задача по очистке
-    threading.Thread(target=lambda: executor.start_polling(dp, skip_updates=True)).start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    threading.Thread(target=lambda: executor.start_polling(dp, skip_updates=True)).start()  # Запуск в отдельном потоке
+    
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))  # Запуск Flask-сервера
+
