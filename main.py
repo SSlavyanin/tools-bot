@@ -1,6 +1,8 @@
 import os
 import logging
 import json
+import threading
+from flask import Flask
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputFile
 from aiogram.utils import executor
@@ -8,6 +10,9 @@ from aiogram.dispatcher.filters import CommandStart
 from io import BytesIO
 from zipfile import ZipFile
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # 🔐 Токены и ключи
 BOT_TOKEN = os.getenv("TOOLBOT_TOKEN")
@@ -16,6 +21,8 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
 logging.basicConfig(level=logging.INFO)
+
+app = Flask(__name__)
 
 # 🧠 История сообщений по каждому пользователю
 sessions = {}
@@ -35,12 +42,14 @@ async def analyze_message(history: str):
         {
             "role": "system",
             "content": (
-                "Ты — ИИ-конструктор инструментов. Получаешь описание задачи, уточняешь детали. "
+                "Ты — ИИ-конструктор инструментов. Получаешь сообщение от пользователя и помогаешь сформулировать задание. "
+                "Задавай уточняющие вопросы, если что-то неясно. " 
                 "Когда всё понятно — возвращаешь JSON с:\n"
                 "- status: 'ready' или 'need_more_info'\n"
                 "- reply: что сказать пользователю\n"
                 "- task: краткое описание\n"
-                "- params: параметры задачи (dict)"
+                "- params: параметры задачи (dict)"\n
+                "Когда всё ясно — уточни у пользователя, можно ли начинать генерацию инструмента. "
             )
         },
         {"role": "user", "content": history}
@@ -109,11 +118,9 @@ async def handle_message(message: types.Message):
     user_id = message.from_user.id
     text = message.text.strip()
 
-    # добавляем сообщение в историю
     history = sessions.setdefault(user_id, [])
     history.append(text)
 
-    # анализируем всю историю диалога
     result = await analyze_message("\n".join(history))
     status = result.get("status")
     reply = result.get("reply")
@@ -129,11 +136,16 @@ async def handle_message(message: types.Message):
         await message.answer("✅ Инструмент готов! Вот архив:")
         await message.answer_document(InputFile(zip_file))
 
-        # очищаем сессию
         sessions.pop(user_id, None)
     else:
         await message.answer("⚠️ Что-то пошло не так. Попробуй ещё раз.")
 
-# 🚀 Старт бота
+# 🌐 Flask-сервер для Render
+@app.route("/")
+def index():
+    return "ToolBot работает!"
+
+# 🚀 Запуск Flask + aiogram
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+    threading.Thread(target=lambda: executor.start_polling(dp, skip_updates=True)).start()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
