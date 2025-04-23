@@ -15,7 +15,9 @@ from zipfile import ZipFile
 
 
 # Настройка логирования
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+# logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.getLogger("aiogram.event").setLevel(logging.WARNING)
+
 
 # 🔐 Токены и ключи
 BOT_TOKEN = os.getenv("TOOLBOT_TOKEN")
