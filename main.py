@@ -168,10 +168,6 @@ async def handle_message(message: types.Message):
     else:
         await message.answer("⚠️ Что-то пошло не так. Попробуй ещё раз.")
 
-# 🌐 Flask-сервер для Render
-@app.route("/")
-def index():
-    return "ToolBot работает!"
 
 # 🚀 Функция очистки сессий
 async def cleanup_sessions():
@@ -190,11 +186,23 @@ async def cleanup_sessions():
 
         await asyncio.sleep(600)  # проверка каждые 10 минут
 
-# 🚀 Запуск Flask + aiogram
+
+# 🌐 Flask-сервер для Render
+@app.route("/")
+def index():
+    return "ToolBot работает!"
+
+
+# 🚀 Главная точка входа
+async def main():
+    asyncio.create_task(cleanup_sessions())  # автоочистка
+    await dp.start_polling()
+
+def run_flask():
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(cleanup_sessions())  # фоновая задача по очистке
-    threading.Thread(target=lambda: executor.start_polling(dp, skip_updates=True)).start()  # Запуск в отдельном потоке
-    
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))  # Запуск Flask-сервера
+    Thread(target=run_flask).start()  # запуск Flask в фоне
+    asyncio.run(main())  # запуск aiogram как основной задачи
+
 
