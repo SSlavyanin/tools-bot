@@ -31,7 +31,7 @@ app = Flask(__name__)
 sessions = {}
 
 # Функция для чтения system prompt из файла
-def load_prompt(filename="system_prompt.txt"):
+def load_system_prompt(filename="system_prompt.txt"):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     full_path = os.path.join(base_dir, filename)
     with open(full_path, "r", encoding="utf-8") as f:
