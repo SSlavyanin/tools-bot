@@ -76,11 +76,14 @@ async def analyze_message(history: str):
             result_dict = extract_json(content)
             if not result_dict:
                 logging.error("Не удалось извлечь JSON из ответа.")
-                return {"status": "need_more_info", "reply": content.strip()}
+                return {
+                    "status": "need_more_info",
+                    "reply": "Извини, я не понял твою задачу. Можешь объяснить чуть подробнее?"
+                }
 
             return {
                 "status": result_dict.get("status", "need_more_info"),
-                "reply": result_dict.get("reply", content.strip()),
+                "reply": result_dict.get("reply"),
                 "task": result_dict.get("task"),
                 "params": result_dict.get("params"),
             }
@@ -92,6 +95,7 @@ async def analyze_message(history: str):
     except Exception as e:
         logging.error(f"Произошла ошибка: {e}")
         return {"status": "need_more_info", "reply": "Произошла непредвиденная ошибка."}
+
 
 
 # 🛠 Генерация кода инструмента
@@ -144,17 +148,20 @@ async def handle_message(message: types.Message):
     user_id = message.from_user.id
     text = message.text.strip()
 
-    # добавляем сообщение в историю и обновляем время активности
+    # обновляем историю
     history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
     history["history"].append(text)
     history["last_active"] = time.time()
 
+    # получаем результат анализа
     result = await analyze_message("\n".join(history["history"]))
     status = result.get("status")
     reply = result.get("reply")
 
     if status == "need_more_info":
-        await message.answer(reply)
+        # выводим только reply — текст вопроса
+        if reply:
+            await message.answer(reply)
     elif status == "ready":
         task = result.get("task")
         params = result.get("params")
@@ -167,6 +174,7 @@ async def handle_message(message: types.Message):
         sessions.pop(user_id, None)
     else:
         await message.answer("⚠️ Что-то пошло не так. Попробуй ещё раз.")
+
 
 
 # 🚀 Функция очистки сессий
