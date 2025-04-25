@@ -57,7 +57,7 @@ async def ping_render():
     while True:
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.get("http://localhost:5000/")
+                response = await client.get("https://tools-bot.onrender.com")
                 logging.info(f"🔄 Пинг на Render: {response.status_code}")
         except Exception as e:
             logging.warning(f"⚠️ Ошибка при пинге Render: {e}")
