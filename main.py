@@ -44,16 +44,24 @@ def update_user_session(user_id, user_message):
 
 
 # Функция для чтения system prompt из файла
-def load_system_prompt(filename="system_prompt.txt"):
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    full_path = os.path.join(base_dir, filename)
-    with open(full_path, "r", encoding="utf-8") as f:
-        return f.read()
+def load_system_prompts():
+    try:
+        with open("chat_system_prompt.txt", "r", encoding="utf-8") as f:
+            chat_system_prompt = f.read().strip()
+        with open("code_system_prompt.txt", "r", encoding="utf-8") as f:
+            code_system_prompt = f.read().strip()
+        return chat_system_prompt, code_system_prompt
+    except Exception as e:
+        logging.error(f"❌ Ошибка при загрузке system prompt'ов: {e}")
+        return "", ""
+
 
 
 # Пример использования system_prompt
-system_prompt_chat = chat_system_prompt()
-system_prompt_code = code_system_prompt()
+system_prompt_chat, system_prompt_code = load_system_prompts()
+
+# system_prompt_chat = chat_system_prompt()
+# system_prompt_code = code_system_prompt()
 
 
 # 🔁 ФУНКЦИЯ ДЛЯ ПИНГОВАНИЯ RENDER
