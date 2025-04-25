@@ -14,7 +14,9 @@ from io import BytesIO
 from zipfile import ZipFile
 from collections import defaultdict, deque
 
-user_sessions = defaultdict(lambda: deque(maxlen=10))  # Храним до 10 последних сообщений
+# ⬆️ Сессии
+sessions = defaultdict(lambda: {"history": [], "last_active": time.time()})
+
 
 # Настройка логирования
 # logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -31,6 +33,7 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
+
 # обновления сессии
 def update_user_session(user_id, user_message):
     user_sessions[user_id].append({"role": "user", "content": user_message})
@@ -44,8 +47,23 @@ def load_system_prompt(filename="system_prompt.txt"):
     with open(full_path, "r", encoding="utf-8") as f:
         return f.read()
 
+
 # Пример использования
 system_prompt = load_system_prompt()
+
+
+# 🔁 ФУНКЦИЯ ДЛЯ ПИНГОВАНИЯ RENDER
+async def ping_render():
+    while True:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get("http://localhost:5000/")
+                logging.info(f"🔄 Пинг на Render: {response.status_code}")
+        except Exception as e:
+            logging.warning(f"⚠️ Ошибка при пинге Render: {e}")
+        await asyncio.sleep(840)  # каждые 14 минут
+
+
 
 # 🧠 Парсинг JSON из текста
 def extract_json(text: str) -> dict:
@@ -190,22 +208,21 @@ async def handle_message(message: types.Message):
 
 
 
-# 🚀 Функция очистки сессий
+# 🧹 АВТООЧИСТКА СЕССИЙ
 async def cleanup_sessions():
     while True:
         now = time.time()
         to_delete = []
 
-        for user_id, session in sessions.items():
-            last_msg_time = session["last_active"]
-            if now - last_msg_time > 3600:  # 1 час неактивности
+        for user_id, session in list(sessions.items()):
+            if now - session["last_active"] > 3600:  # 1 час неактивности
                 to_delete.append(user_id)
 
         for user_id in to_delete:
             sessions.pop(user_id, None)
-            logging.info(f"Удалена сессия пользователя {user_id} из-за неактивности.")  # Логируем удаление
+            logging.info(f"🗑️ Удалена сессия пользователя {user_id} из-за неактивности.")
+        await asyncio.sleep(600)  # каждые 10 мин
 
-        await asyncio.sleep(600)  # проверка каждые 10 минут
 
 
 # 🌐 Flask-сервер для Render
@@ -217,6 +234,7 @@ def index():
 # 🚀 Главная точка входа
 async def main():
     asyncio.create_task(cleanup_sessions())  # автоочистка
+    asyncio.create_task(ping_render())
     await dp.start_polling()
 
 def run_flask():
