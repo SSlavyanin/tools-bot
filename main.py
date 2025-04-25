@@ -14,6 +14,9 @@ from io import BytesIO
 from zipfile import ZipFile
 from collections import defaultdict, deque
 
+# Режимы работы пользователей: 'chat' или 'code'
+user_modes = defaultdict(lambda: 'chat')
+
 # ⬆️ Сессии
 sessions = defaultdict(lambda: {"history": [], "last_active": time.time()})
 
@@ -64,7 +67,6 @@ async def ping_render():
         await asyncio.sleep(300)  # каждые 14 минут
 
 
-
 # 🧠 Парсинг JSON из текста
 def extract_json(text: str) -> dict:
     try:
@@ -76,13 +78,16 @@ def extract_json(text: str) -> dict:
         
 
 async def analyze_message(history: str):
-    prompt = [
-        {
-            "role": "system",
-            "content": system_prompt
-        },
-        {"role": "user", "content": history}
-    ]
+    if mode == 'code':
+        prompt = [
+            {"role": "system", "content": "Ты — генератор Python-скриптов. Отвечай только кодом, без объяснений."},
+            {"role": "user", "content": history}
+        ]
+    else:
+        prompt = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": history}
+        ]
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -147,12 +152,11 @@ def create_zip(task, code: str):
 # Начало диалога по нажатию кнопки
 @dp.message_handler(commands=["start"])
 async def send_welcome(message: types.Message):
-    if message.get_args() == "tool":
-        # Это сработает, если бот был вызван с параметром start=tool
-        await message.reply("Вы перешли к созданию инструмента! Начни описывать, что тебе нужно.")
-    else:
-        # Это сработает для обычного запуска бота (например, без параметров)
-        await message.reply("Привет! Нажми кнопку ниже, чтобы начать создание инструмента.")
+    user_id = message.from_user.id
+    user_modes[user_id] = 'chat'
+    sessions.pop(user_id, None)
+    await message.reply("Привет! Нажми кнопку ниже, чтобы начать создание инструмента.")
+
 
 
 # 🎛 Кнопка "Сделать инструмент"
@@ -173,39 +177,57 @@ async def handle_tool_request(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-# 📩 Обработка всех сообщений после нажатия кнопки
 @dp.message_handler()
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
     text = message.text.strip()
 
-    # обновляем историю
-    history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
-    history["history"].append(text)
-    history["last_active"] = time.time()
+    # Получаем текущий режим пользователя
+    mode = user_modes[user_id]
 
-    # получаем результат анализа
-    result = await analyze_message("\n".join(history["history"]))
-    status = result.get("status")
-    reply = result.get("reply")
+    if mode == 'chat':
+        # Обработка в диалоговом режиме
+        history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
+        history["history"].append(text)
+        history["last_active"] = time.time()
 
-    if status == "need_more_info":
-        # выводим только reply — текст вопроса
-        if reply:
-            await message.answer(reply)
-    elif status == "ready":
-        task = result.get("task")
-        params = result.get("params")
+        # Анализируем сообщение, передавая режим
+        result = await analyze_message("\n".join(history["history"]), mode=mode)
+        status = result.get("status")
+        reply = result.get("reply")
+
+        if status == "need_more_info":
+            if reply:
+                await message.answer(reply)
+        elif status == "ready":
+            # Переключаемся в режим генерации кода
+            user_modes[user_id] = 'code'
+            await message.answer("Понял задачу. Приступаю к генерации кода...")
+            # Повторно вызываем обработчик для генерации кода
+            await handle_message(message)
+        else:
+            await message.answer("⚠️ Что-то пошло не так. Попробуй ещё раз.")
+
+    elif mode == 'code':
+        # Генерация кода на основе последней истории
+        history = sessions.get(user_id, {}).get("history", [])
+        if not history:
+            await message.answer("Нет данных для генерации кода.")
+            return
+
+        # Анализируем сообщение, передавая режим
+        result = await analyze_message("\n".join(history), mode=mode)
+        task = result.get("task", "Инструмент")
+        params = result.get("params", {})
         code = generate_code(task, params)
         zip_file = create_zip(task, code)
 
         await message.answer("✅ Инструмент готов! Вот архив:")
         await message.answer_document(InputFile(zip_file))
 
+        # Сброс режима и истории
+        user_modes[user_id] = 'chat'
         sessions.pop(user_id, None)
-    else:
-        await message.answer("⚠️ Что-то пошло не так. Попробуй ещё раз.")
-
 
 
 # 🧹 АВТООЧИСТКА СЕССИЙ
