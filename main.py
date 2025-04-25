@@ -61,7 +61,7 @@ async def ping_render():
                 logging.info(f"🔄 Пинг на Render: {response.status_code}")
         except Exception as e:
             logging.warning(f"⚠️ Ошибка при пинге Render: {e}")
-        await asyncio.sleep(840)  # каждые 14 минут
+        await asyncio.sleep(300)  # каждые 14 минут
 
 
 
