@@ -51,8 +51,9 @@ def load_system_prompt(filename="system_prompt.txt"):
         return f.read()
 
 
-# Пример использования
-system_prompt = load_system_prompt()
+# Пример использования system_prompt
+system_prompt_chat = chat_system_prompt()
+system_prompt_code = code_system_prompt()
 
 
 # 🔁 ФУНКЦИЯ ДЛЯ ПИНГОВАНИЯ RENDER
@@ -80,12 +81,12 @@ def extract_json(text: str) -> dict:
 async def analyze_message(history: str):
     if mode == 'code':
         prompt = [
-            {"role": "system", "content": "Ты — генератор Python-скриптов. Отвечай только кодом, без объяснений."},
+            {"role": "system", "content": system_prompt_code},
             {"role": "user", "content": history}
         ]
     else:
         prompt = [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": system_prompt_chat},
             {"role": "user", "content": history}
         ]
 
