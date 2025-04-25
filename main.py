@@ -86,7 +86,7 @@ def extract_json(text: str) -> dict:
         return None
         
 
-async def analyze_message(history: str):
+async def analyze_message(history: str, prompt, mode="chat"):
     if mode == 'code':
         prompt = [
             {"role": "system", "content": system_prompt_code},
