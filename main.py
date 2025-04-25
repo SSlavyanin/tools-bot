@@ -12,7 +12,9 @@ from aiogram.utils import executor
 from aiogram.dispatcher.filters import CommandStart
 from io import BytesIO
 from zipfile import ZipFile
+from collections import defaultdict, deque
 
+user_sessions = defaultdict(lambda: deque(maxlen=10))  # Храним до 10 последних сообщений
 
 # Настройка логирования
 # logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -29,8 +31,11 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
-# 🧠 История сообщений по каждому пользователю
-sessions = {}
+# обновления сессии
+def update_user_session(user_id, user_message):
+    user_sessions[user_id].append({"role": "user", "content": user_message})
+    logging.info(f"📚 Обновлена сессия пользователя {user_id}: {user_message[:50]}...")
+
 
 # Функция для чтения system prompt из файла
 def load_system_prompt(filename="system_prompt.txt"):
@@ -50,6 +55,7 @@ def extract_json(text: str) -> dict:
         return json.loads(text[start:end])
     except Exception:
         return None
+        
 
 async def analyze_message(history: str):
     prompt = [
@@ -108,6 +114,7 @@ def generate_code(task, params):
     lines.append("\nprint('Инструмент готов к работе!')")
     return "\n".join(lines)
 
+
 # 📦 Создание ZIP-архива
 def create_zip(task, code: str):
     zip_buffer = BytesIO()
@@ -117,6 +124,7 @@ def create_zip(task, code: str):
     zip_buffer.seek(0)
     zip_buffer.name = f"{task.replace(' ', '_')}.zip"
     return zip_buffer
+
 
 # Начало диалога по нажатию кнопки
 @dp.message_handler(commands=["start"])
@@ -128,6 +136,7 @@ async def send_welcome(message: types.Message):
         # Это сработает для обычного запуска бота (например, без параметров)
         await message.reply("Привет! Нажми кнопку ниже, чтобы начать создание инструмента.")
 
+
 # 🎛 Кнопка "Сделать инструмент"
 @dp.message_handler(commands=["start", "tool"])
 async def start_command(message: types.Message):
@@ -136,6 +145,7 @@ async def start_command(message: types.Message):
     )
     await message.reply("Нажми кнопку ниже, чтобы начать создание инструмента:", reply_markup=kb)
 
+
 # 🔘 Обработка нажатия на кнопку
 @dp.callback_query_handler(lambda c: c.data == "make_tool")
 async def handle_tool_request(callback_query: types.CallbackQuery):
@@ -143,6 +153,7 @@ async def handle_tool_request(callback_query: types.CallbackQuery):
     sessions[user_id] = {"history": [], "last_active": time.time()}  # начинаем с чистой истории и метки времени
     await bot.send_message(user_id, "Привет! Опиши, какой инструмент тебе нужен 🧠")
     await callback_query.answer()
+
 
 # 📩 Обработка всех сообщений после нажатия кнопки
 @dp.message_handler()
