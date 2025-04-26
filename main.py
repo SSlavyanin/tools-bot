@@ -139,23 +139,27 @@ async def analyze_message(history: str, prompt, mode="chat"):
         return {"status": "need_more_info", "reply": "Произошла непредвиденная ошибка."}
 
 
-def summarize_requirements(history):
-    """Умно извлекает требования пользователя для генерации скрипта"""
-    keywords = ["хочу", "нужно", "сделай", "должен", "сделать", "создай", "разработай", "необходимо"]
-    requirements = []
-    
-    for msg in history:
-        lower_msg = msg.lower()
-        if any(word in lower_msg for word in keywords):
-            requirements.append(msg)
-    
-    # Убираем дубли
-    requirements = list(dict.fromkeys(requirements))
 
-    if not requirements:
-        return "\n".join(history)  # fallback — если ничего не нашли
-    
-    return "\n".join(requirements)
+# 🧠 Функция анализа требований в режиме чата
+async def summarize_requirements(messages_text, system_prompt):
+    try:
+        response = await analyze_message(messages_text, system_prompt, mode="chat")
+        logging.info(f"[summarize_requirements] Получен ответ:\n{response}")
+
+        # Пытаемся вырезать JSON из ответа
+        json_start = response.find('{')
+        json_end = response.rfind('}') + 1
+        json_part = response[json_start:json_end]
+
+        data = json.loads(json_part)
+        logging.info(f"[summarize_requirements] Распарсенный JSON:\n{data}")
+
+        return data
+
+    except Exception as e:
+        logging.error(f"[summarize_requirements] Ошибка при обработке ответа: {e}")
+        return {"status": "need_more_info", "reply": "Извини, я не смог обработать твой ответ. Попробуй переформулировать задачу."}
+
 
 
 # 🛠 Генерация кода инструмента
@@ -228,51 +232,39 @@ async def handle_tool_request(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-
 @dp.message_handler()
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
     text = message.text.strip()
-    lower_text = text.lower()
 
     # Получаем текущий режим пользователя
-    mode = user_modes.get(user_id, "chat")
-
-    # Инициализация истории, если нужно
-    history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
-    history["history"].append(text)
-    history["last_active"] = time.time()
+    mode = user_modes.get(user_id, 'chat')
 
     if mode == 'chat':
-        if any(word in lower_text for word in CONFIRM_WORDS):
-            # Пользователь подтвердил готовность к генерации кода
-            user_modes[user_id] = 'code'
-            await message.answer("Отлично! Начинаю создавать инструмент на Python 🚀")
+        # Работа в чате: уточняем требования
+        history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
+        history["history"].append(text)
+        history["last_active"] = time.time()
 
-            # Переходим сразу к генерации скрипта
-            prompt = prompt_code
-            task_summary = summarize_requirements(history["history"])
-            result = await analyze_message(task_summary, prompt, mode="code")
+        combined_history = "\n".join(history["history"])
+        result = await summarize_requirements(combined_history, prompt_chat)
 
-            # Здесь нужно добавить отправку результата пользователю
-            await send_generated_tool(message, result)
-            return
+        if result.get('status') == 'ready_to_generate':
+            await message.answer("Отлично! Генерирую инструмент...")
 
-        # Иначе — продолжаем диалог
-        prompt = prompt_chat
-        context = "\n".join(history["history"])
-        result = await analyze_message(context, prompt, mode="chat")
+            # Генерация и отправка инструмента
+            await send_generated_tool(message, combined_history)
 
-        # Здесь можно просто отправить ответ от модели
-        await message.answer(result)
+            # Сброс сессии
+            user_modes[user_id] = 'chat'
+            sessions.pop(user_id, None)
+        else:
+            reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
+            await message.answer(reply)
 
-    elif mode == 'code':
-        # В режиме кодогенерации
-        prompt = prompt_code
-        task_summary = summarize_requirements(history["history"])
-        result = await analyze_message(task_summary, prompt, mode="code")
+    else:
+        await message.answer("Пожалуйста, опиши, какой инструмент ты хочешь создать.")
 
-        await send_generated_tool(message, result)
 
 
 
