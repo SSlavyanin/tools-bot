@@ -235,56 +235,57 @@ async def handle_tool_request(callback_query: types.CallbackQuery):
 @dp.message_handler()
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
-    text = message.text.strip()
-
+    text = message.text.strip().lower()
     logging.info(f"[handle_message] Получено сообщение от {user_id}: {text}")
 
-    # Проверка состояния
     mode = user_modes.get(user_id, 'chat')
-    state = user_states.get(user_id, None)
-    logging.info(f"[handle_message] Текущий режим: {mode}, состояние: {state}")
+    logging.info(f"[handle_message] Текущий режим пользователя {user_id}: {mode}")
 
-    if mode == 'chat':
-        if state == 'awaiting_confirmation' and text.lower() in CONFIRM_WORDS:
-            logging.info(f"[handle_message] Получено подтверждение генерации от {user_id}.")
-            await message.answer("🚀 Отлично! Генерирую инструмент...")
+    # Фаза ожидания подтверждения генерации
+    if mode == 'waiting_confirmation':
+        if text in ['готов', 'го', 'давай', 'поехали']:
+            logging.info(f"[handle_message] Пользователь {user_id} подтвердил генерацию.")
+            await message.answer("🚀 Начинаю генерацию инструмента...")
 
-            history = sessions.get(user_id)
-            if not history:
-                logging.error(f"[handle_message] История пользователя {user_id} пуста при генерации.")
-                await message.answer("Ошибка: не найдена история задачи.")
-                return
-
-            combined_history = "\n".join(history["history"])
+            combined_history = "\n".join(sessions[user_id]["history"])
             await send_generated_tool(message, combined_history)
 
-            # Сброс сессии и состояния
+            # Сброс режима и очистка сессии
             user_modes[user_id] = 'chat'
-            user_states.pop(user_id, None)
             sessions.pop(user_id, None)
-            logging.info(f"[handle_message] Сессия пользователя {user_id} сброшена после генерации.")
-            return
+            logging.info(f"[handle_message] Генерация завершена, сессия пользователя {user_id} очищена.")
+        else:
+            await message.answer("✏️ Жду подтверждения! Напиши 'Готов', чтобы начать генерацию.")
+            logging.info(f"[handle_message] Пользователь {user_id} ещё не подтвердил генерацию.")
+        return
 
-        # Иначе продолжаем собирать требования
+    # Стандартный режим общения
+    if mode == 'chat':
+        # Работаем с историей
         history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
         history["history"].append(text)
         history["last_active"] = time.time()
 
         combined_history = "\n".join(history["history"])
         result = await summarize_requirements(combined_history, prompt_chat)
+        logging.info(f"[handle_message] Результат анализа требований:\n{result}")
 
-        if result.get('status') == 'ready_to_generate':
-            user_states[user_id] = 'awaiting_confirmation'
-            logging.info(f"[handle_message] Пользователь {user_id} готов к генерации, ожидаем подтверждения.")
-            await message.answer(result.get('reply', "✅ Всё понял! Напиши 'Готов', чтобы начать."))
+        status = result.get('status')
+        reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
+
+        if status == 'ready_to_generate':
+            # Переход в фазу ожидания подтверждения
+            user_modes[user_id] = 'waiting_confirmation'
+            await message.answer(f"✅ {reply}")
+            logging.info(f"[handle_message] Пользователь {user_id} готов к подтверждению генерации.")
         else:
-            reply = result.get('reply', "❓ Не совсем понял. Можешь объяснить ещё раз?")
-            logging.info(f"[handle_message] Ответ пользователю {user_id}: {reply}")
             await message.answer(reply)
+            logging.info(f"[handle_message] Пользователь {user_id} продолжает уточнять требования.")
+        return
 
-    else:
-        logging.warning(f"[handle_message] Неизвестный режим у пользователя {user_id}: {mode}")
-        await message.answer("Пожалуйста, опиши, какой инструмент ты хочешь создать 🛠️.")
+    # Если пользователь в непонятном режиме
+    await message.answer("Пожалуйста, опиши, какой инструмент ты хочешь создать.")
+    logging.warning(f"[handle_message] Пользователь {user_id} в неизвестном режиме: {mode}")
 
 
 
