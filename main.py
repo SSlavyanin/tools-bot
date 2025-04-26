@@ -232,10 +232,30 @@ async def handle_tool_request(callback_query: types.CallbackQuery):
 @dp.message_handler()
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
-    text = message.text.strip()
+    text = message.text.strip().lower()
 
     # Получаем текущий режим пользователя
     mode = user_modes.get(user_id, 'chat')
+
+    # Проверка: ожидание подтверждения генерации
+    user_state = user_states.get(user_id)
+
+    if user_state == "waiting_confirmation":
+        if text in ["готов", "да", "поехали"]:
+            await message.answer("🚀 Начинаю генерацию инструмента!")
+
+            history = sessions.get(user_id)
+            if history:
+                combined_history = "\n".join(history["history"])
+                await send_generated_tool(message, combined_history)
+
+            # Сброс состояния и сессии
+            user_states.pop(user_id, None)
+            user_modes[user_id] = 'chat'
+            sessions.pop(user_id, None)
+        else:
+            await message.answer("👋 Напиши 'Готов', когда будешь готов перейти к созданию инструмента.")
+        return
 
     if mode == 'chat':
         # Работа в чате: уточняем требования
@@ -247,20 +267,18 @@ async def handle_message(message: types.Message):
         result = await summarize_requirements(combined_history, prompt_chat)
 
         if result.get('status') == 'ready_to_generate':
-            await message.answer("Отлично! Генерирую инструмент...")
+            await message.answer("✅ Всё понял, готов перейти к созданию кода. Напиши 'Готов', чтобы начать!")
+            user_states[user_id] = "waiting_confirmation"
 
-            # Генерация и отправка инструмента
-            await send_generated_tool(message, combined_history)
-
-            # Сброс сессии
-            user_modes[user_id] = 'chat'
-            sessions.pop(user_id, None)
-        else:
+        elif result.get('status') == 'need_more_info':
             reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
             await message.answer(reply)
 
+        else:
+            await message.answer("🤔 Что-то пошло не так. Попробуй описать задачу иначе.")
+
     else:
-        await message.answer("Пожалуйста, опиши, какой инструмент ты хочешь создать.")
+        await message.answer("📦 Опиши, какой инструмент ты хочешь создать.")
 
 
 
