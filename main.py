@@ -14,6 +14,8 @@ from io import BytesIO
 from zipfile import ZipFile
 from collections import defaultdict, deque
 
+user_states = {}
+
 # Режимы работы пользователей: 'chat' или 'code'
 user_modes = defaultdict(lambda: 'chat')
 
