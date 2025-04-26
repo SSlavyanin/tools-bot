@@ -146,15 +146,12 @@ async def summarize_requirements(messages_text, system_prompt):
         response = await analyze_message(messages_text, system_prompt, mode="chat")
         logging.info(f"[summarize_requirements] Получен ответ:\n{response}")
 
-        # Пытаемся вырезать JSON из ответа
-        json_start = response.find('{')
-        json_end = response.rfind('}') + 1
-        json_part = response[json_start:json_end]
-
-        data = json.loads(json_part)
-        logging.info(f"[summarize_requirements] Распарсенный JSON:\n{data}")
-
-        return data
+        # Проверяем сразу словарь
+        if isinstance(response, dict):
+            return response
+        else:
+            logging.warning("[summarize_requirements] Ответ был не словарём, пробуем загрузить как JSON.")
+            return json.loads(response)
 
     except Exception as e:
         logging.error(f"[summarize_requirements] Ошибка при обработке ответа: {e}")
