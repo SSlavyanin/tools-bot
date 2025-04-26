@@ -58,7 +58,7 @@ def load_system_prompts():
 
 
 # Пример использования system_prompt
-system_prompt_chat, system_prompt_code = load_system_prompts()
+prompt_chat, prompt_code = load_system_prompts()
 
 # system_prompt_chat = chat_system_prompt()
 # system_prompt_code = code_system_prompt()
@@ -89,12 +89,12 @@ def extract_json(text: str) -> dict:
 async def analyze_message(history: str, prompt, mode="chat"):
     if mode == 'code':
         prompt = [
-            {"role": "system", "content": system_prompt_code},
+            {"role": "system", "content": prompt_code},
             {"role": "user", "content": history}
         ]
     else:
         prompt = [
-            {"role": "system", "content": system_prompt_chat},
+            {"role": "system", "content": prompt_chat},
             {"role": "user", "content": history}
         ]
 
@@ -201,7 +201,7 @@ async def handle_message(message: types.Message):
         history["last_active"] = time.time()
 
         # Анализируем сообщение, передавая режим
-        prompt = system_prompt_chat if mode == "chat" else system_prompt_code
+        prompt = prompt_chat if mode == "chat" else prompt_code
         result = await analyze_message("\n".join(history["history"]), prompt, mode=mode)
 
         status = result.get("status")
@@ -227,7 +227,7 @@ async def handle_message(message: types.Message):
             return
 
         # Анализируем сообщение, передавая режим
-        prompt = system_prompt_chat if mode == "chat" else system_prompt_code
+        prompt = prompt_chat if mode == "chat" else prompt_code
         result = await analyze_message("\n".join(history), prompt, mode=mode)
         task = result.get("task", "Инструмент")
         params = result.get("params", {})
