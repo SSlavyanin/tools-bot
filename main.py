@@ -14,6 +14,7 @@ from io import BytesIO
 from zipfile import ZipFile
 from collections import defaultdict, deque
 
+# Отслеживание подтверждения генерации
 user_states = {}
 
 # Режимы работы пользователей: 'chat' или 'code'
@@ -234,33 +235,37 @@ async def handle_tool_request(callback_query: types.CallbackQuery):
 @dp.message_handler()
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
-    text = message.text.strip().lower()
+    text = message.text.strip()
 
-    # Получаем текущий режим пользователя
+    logging.info(f"[handle_message] Получено сообщение от {user_id}: {text}")
+
+    # Проверка состояния
     mode = user_modes.get(user_id, 'chat')
-
-    # Проверка: ожидание подтверждения генерации
-    user_state = user_states.get(user_id)
-
-    if user_state == "waiting_confirmation":
-        if text in ["готов", "да", "поехали"]:
-            await message.answer("🚀 Начинаю генерацию инструмента!")
-
-            history = sessions.get(user_id)
-            if history:
-                combined_history = "\n".join(history["history"])
-                await send_generated_tool(message, combined_history)
-
-            # Сброс состояния и сессии
-            user_states.pop(user_id, None)
-            user_modes[user_id] = 'chat'
-            sessions.pop(user_id, None)
-        else:
-            await message.answer("👋 Напиши 'Готов', когда будешь готов перейти к созданию инструмента.")
-        return
+    state = user_states.get(user_id, None)
+    logging.info(f"[handle_message] Текущий режим: {mode}, состояние: {state}")
 
     if mode == 'chat':
-        # Работа в чате: уточняем требования
+        if state == 'awaiting_confirmation' and text.lower() in CONFIRM_WORDS:
+            logging.info(f"[handle_message] Получено подтверждение генерации от {user_id}.")
+            await message.answer("🚀 Отлично! Генерирую инструмент...")
+
+            history = sessions.get(user_id)
+            if not history:
+                logging.error(f"[handle_message] История пользователя {user_id} пуста при генерации.")
+                await message.answer("Ошибка: не найдена история задачи.")
+                return
+
+            combined_history = "\n".join(history["history"])
+            await send_generated_tool(message, combined_history)
+
+            # Сброс сессии и состояния
+            user_modes[user_id] = 'chat'
+            user_states.pop(user_id, None)
+            sessions.pop(user_id, None)
+            logging.info(f"[handle_message] Сессия пользователя {user_id} сброшена после генерации.")
+            return
+
+        # Иначе продолжаем собирать требования
         history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
         history["history"].append(text)
         history["last_active"] = time.time()
@@ -269,19 +274,17 @@ async def handle_message(message: types.Message):
         result = await summarize_requirements(combined_history, prompt_chat)
 
         if result.get('status') == 'ready_to_generate':
-            await message.answer("✅ Всё понял, готов перейти к созданию кода. Напиши 'Готов', чтобы начать!")
-            user_states[user_id] = "waiting_confirmation"
-
-        elif result.get('status') == 'need_more_info':
-            reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
+            user_states[user_id] = 'awaiting_confirmation'
+            logging.info(f"[handle_message] Пользователь {user_id} готов к генерации, ожидаем подтверждения.")
+            await message.answer(result.get('reply', "✅ Всё понял! Напиши 'Готов', чтобы начать."))
+        else:
+            reply = result.get('reply', "❓ Не совсем понял. Можешь объяснить ещё раз?")
+            logging.info(f"[handle_message] Ответ пользователю {user_id}: {reply}")
             await message.answer(reply)
 
-        else:
-            await message.answer("🤔 Что-то пошло не так. Попробуй описать задачу иначе.")
-
     else:
-        await message.answer("📦 Опиши, какой инструмент ты хочешь создать.")
-
+        logging.warning(f"[handle_message] Неизвестный режим у пользователя {user_id}: {mode}")
+        await message.answer("Пожалуйста, опиши, какой инструмент ты хочешь создать 🛠️.")
 
 
 
