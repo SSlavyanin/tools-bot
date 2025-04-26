@@ -201,7 +201,9 @@ async def handle_message(message: types.Message):
         history["last_active"] = time.time()
 
         # Анализируем сообщение, передавая режим
-        result = await analyze_message("\n".join(history["history"]), mode=mode)
+        prompt = system_prompt_chat if mode == "chat" else system_prompt_code
+        result = await analyze_message("\n".join(history["history"]), prompt, mode=mode)
+
         status = result.get("status")
         reply = result.get("reply")
 
@@ -225,7 +227,8 @@ async def handle_message(message: types.Message):
             return
 
         # Анализируем сообщение, передавая режим
-        result = await analyze_message("\n".join(history), mode=mode)
+        prompt = system_prompt_chat if mode == "chat" else system_prompt_code
+        result = await analyze_message("\n".join(history), prompt, mode=mode)
         task = result.get("task", "Инструмент")
         params = result.get("params", {})
         code = generate_code(task, params)
