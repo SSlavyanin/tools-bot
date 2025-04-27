@@ -239,9 +239,12 @@ async def handle_message(message: types.Message):
     logging.info(f"[handle_message] Сообщение от {user_id}: {text}")
 
     mode = user_modes.get(user_id, 'chat')
+    logging.info(f"[handle_message] Текущий режим пользователя {user_id}: {mode}")
 
+    # Фаза ожидания подтверждения
     if mode == 'waiting_confirmation':
         if text in ['готов', 'го', 'давай', 'поехали']:
+            logging.info(f"[handle_message] Пользователь {user_id} подтвердил генерацию.")
             await message.answer("🚀 Генерирую инструмент...")
             combined_history = "\n".join(sessions[user_id]["history"])
             await send_generated_tool(message, combined_history)
@@ -250,12 +253,15 @@ async def handle_message(message: types.Message):
             logging.info(f"[handle_message] Генерация завершена, сессия очищена для {user_id}")
         else:
             await message.answer("✏️ Напиши 'Готов', чтобы начать генерацию.")
+            logging.info(f"[handle_message] Пользователь {user_id} ещё не подтвердил генерацию.")
         return
 
-    # Режим chat
+    # Режим общения (chat)
     history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
     history["history"].append(text)
     history["last_active"] = time.time()
+
+    logging.info(f"[handle_message] История переписки пользователя {user_id}: {history['history']}")
 
     combined_history = "\n".join(history["history"])
     result = await summarize_requirements(combined_history, prompt_chat)
@@ -266,13 +272,15 @@ async def handle_message(message: types.Message):
 
     if status == 'ready_to_generate':
         user_modes[user_id] = 'waiting_confirmation'
+        logging.info(f"[handle_message] Пользователь {user_id} готов к генерации.")
         await message.answer(f"✅ {reply}")
     elif status == 'need_more_info':
+        logging.info(f"[handle_message] Пользователь {user_id} продолжает уточнять требования.")
         await message.answer(reply)
     else:
         await message.answer("⚠️ Что-то непонятное в запросе. Давай попробуем переформулировать.")
         logging.warning(f"[handle_message] Неизвестный статус для {user_id}: {status}")
-
+        
 
 
 # 🧹 АВТООЧИСТКА СЕССИЙ
