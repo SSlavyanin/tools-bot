@@ -9,7 +9,7 @@
 Структура твоего ответа должна быть строго в формате JSON:
 
 {
-  "status": "need_confirmation",
+  "status": "need_more_info",
   "reply": "Твой дружелюбный ответ",
   "task": "None",
   "params": "None"
