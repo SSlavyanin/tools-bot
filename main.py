@@ -236,56 +236,42 @@ async def handle_tool_request(callback_query: types.CallbackQuery):
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
     text = message.text.strip().lower()
-    logging.info(f"[handle_message] Получено сообщение от {user_id}: {text}")
+    logging.info(f"[handle_message] Сообщение от {user_id}: {text}")
 
     mode = user_modes.get(user_id, 'chat')
-    logging.info(f"[handle_message] Текущий режим пользователя {user_id}: {mode}")
 
-    # Фаза ожидания подтверждения генерации
     if mode == 'waiting_confirmation':
         if text in ['готов', 'го', 'давай', 'поехали']:
-            logging.info(f"[handle_message] Пользователь {user_id} подтвердил генерацию.")
-            await message.answer("🚀 Начинаю генерацию инструмента...")
-
+            await message.answer("🚀 Генерирую инструмент...")
             combined_history = "\n".join(sessions[user_id]["history"])
             await send_generated_tool(message, combined_history)
-
-            # Сброс режима и очистка сессии
             user_modes[user_id] = 'chat'
             sessions.pop(user_id, None)
-            logging.info(f"[handle_message] Генерация завершена, сессия пользователя {user_id} очищена.")
+            logging.info(f"[handle_message] Генерация завершена, сессия очищена для {user_id}")
         else:
-            await message.answer("✏️ Жду подтверждения! Напиши 'Готов', чтобы начать генерацию.")
-            logging.info(f"[handle_message] Пользователь {user_id} ещё не подтвердил генерацию.")
+            await message.answer("✏️ Напиши 'Готов', чтобы начать генерацию.")
         return
 
-    # Стандартный режим общения
-    if mode == 'chat':
-        # Работаем с историей
-        history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
-        history["history"].append(text)
-        history["last_active"] = time.time()
+    # Режим chat
+    history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
+    history["history"].append(text)
+    history["last_active"] = time.time()
 
-        combined_history = "\n".join(history["history"])
-        result = await summarize_requirements(combined_history, prompt_chat)
-        logging.info(f"[handle_message] Результат анализа требований:\n{result}")
+    combined_history = "\n".join(history["history"])
+    result = await summarize_requirements(combined_history, prompt_chat)
+    logging.info(f"[handle_message] Ответ анализа: {result}")
 
-        status = result.get('status')
-        reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
+    status = result.get('status')
+    reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
 
-        if status == 'ready_to_generate':
-            # Переход в фазу ожидания подтверждения
-            user_modes[user_id] = 'waiting_confirmation'
-            await message.answer(f"✅ {reply}")
-            logging.info(f"[handle_message] Пользователь {user_id} готов к подтверждению генерации.")
-        else:
-            await message.answer(reply)
-            logging.info(f"[handle_message] Пользователь {user_id} продолжает уточнять требования.")
-        return
-
-    # Если пользователь в непонятном режиме
-    await message.answer("Пожалуйста, опиши, какой инструмент ты хочешь создать.")
-    logging.warning(f"[handle_message] Пользователь {user_id} в неизвестном режиме: {mode}")
+    if status == 'ready_to_generate':
+        user_modes[user_id] = 'waiting_confirmation'
+        await message.answer(f"✅ {reply}")
+    elif status == 'need_more_info':
+        await message.answer(reply)
+    else:
+        await message.answer("⚠️ Что-то непонятное в запросе. Давай попробуем переформулировать.")
+        logging.warning(f"[handle_message] Неизвестный статус для {user_id}: {status}")
 
 
 
