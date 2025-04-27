@@ -248,7 +248,6 @@ async def handle_message(message: types.Message):
         else:
             await message.answer("✋ Напиши 'Готов', если хочешь создать инструмент.")
             logging.info(f"[handle_message] Ожидание подтверждения от пользователя {user_id}.")
-
         return
 
     # Режим chat
@@ -272,8 +271,8 @@ async def handle_message(message: types.Message):
     else:
         await message.answer("⚠️ Что-то непонятное в запросе. Давай попробуем переформулировать.")
         logging.warning(f"[handle_message] Неизвестный статус для {user_id}: {status}")
-        
 
+        
 
 # 🧹 АВТООЧИСТКА СЕССИЙ
 async def cleanup_sessions():
