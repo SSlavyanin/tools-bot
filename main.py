@@ -313,30 +313,29 @@ async def handle_message(message: types.Message):
     text = message.text.strip().lower()
     logging.info(f"[handle_message] 📩 Сообщение от {user_id}: {text}")
 
-    # Получаем текущий режим пользователя
+    # Получаем режим пользователя
     mode = user_modes.get(user_id, 'chat')
     logging.info(f"[handle_message] 🔄 Текущий режим: {mode}")
 
-    # Режим ожидания подтверждения на генерацию кода
+    # === Подтверждение перехода на генерацию ===
     if mode == 'waiting_confirmation':
         if text in ['готов', 'го', 'давай', 'поехали']:
-            user_modes[user_id] = 'need_confirmation'
-            logging.info(f"[handle_message] ✅ Пользователь подтвердил создание инструмента.")
-            await message.answer("🚀 Подтверждение получено! Переходим к созданию инструмента.")
+            user_modes[user_id] = 'code'
+            logging.info(f"[handle_message] ✅ Пользователь подтвердил — переходим в режим code.")
+            await message.answer("🚀 Отлично! Теперь переходим к сбору параметров и созданию инструмента.")
         else:
-            logging.info(f"[handle_message] ⏳ Ожидание подтверждения от пользователя {user_id}.")
-            await message.answer("✋ Напиши 'Готов', если хочешь приступить к созданию инструмента.")
+            logging.info(f"[handle_message] ⏳ Ожидаем подтверждения от {user_id}.")
+            await message.answer("✋ Напиши 'Готов', если хочешь перейти к следующему этапу.")
         return
 
-    # == Режим обсуждения идеи ==
-    # Обновляем историю диалога
+    # === Обновление истории сессии ===
     history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
     history["history"].append(text)
     history["last_active"] = time.time()
     combined_history = "\n".join(history["history"])
     logging.info(f"[handle_message] 💬 История пользователя {user_id}:\n{combined_history}")
 
-    # Отправляем в ИИ анализ концепции
+    # === Анализ идеи ===
     logging.info(f"[handle_message] ⏳ Отправка в summarize_requirements...")
     result = await summarize_requirements(combined_history, prompt_chat)
     logging.info(f"[handle_message] 📥 Ответ анализа идеи: {result}")
@@ -344,16 +343,20 @@ async def handle_message(message: types.Message):
     status = result.get('status')
     reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
 
-    # ✅ Готов перейти к конкретизации
-    if status == 'ready_to_generate':
+    # === Предложение перейти к следующему этапу ===
+    if status == 'ready_to_start_code_phase':
         user_modes[user_id] = 'waiting_confirmation'
-        logging.info(f"[handle_message] 🟢 Инструмент определён, ожидаем подтверждение от {user_id}")
-        await message.answer(f"✅ {reply} Напиши 'Готов', чтобы подтвердить и начать создание инструмента.")
+        await message.answer(f"✅ {reply} Напиши 'Готов', если хочешь перейти к сбору параметров.")
         return
 
-    # 🧠 ИИ не понял до конца — смотрим, не просит ли юзер идеи
+    # === Полная готовность (альтернатива, если используешь ready_to_generate) ===
+    if status == 'ready_to_generate':
+        user_modes[user_id] = 'waiting_confirmation'
+        await message.answer(f"✅ {reply} Напиши 'Готов', чтобы начать генерацию инструмента.")
+        return
+
+    # === Юзер просит идеи ===
     if status == 'need_more_info':
-        logging.info(f"[handle_message] 🤔 ИИ не определился — проверяем, просит ли {user_id} идеи.")
         if any(kw in text for kw in ['предложи', 'идею', 'идеи', 'варианты', 'подкинь', 'не знаю']):
             logging.info(f"[handle_message] 🔍 Обнаружен запрос на генерацию идей от {user_id}")
 
@@ -362,30 +365,31 @@ async def handle_message(message: types.Message):
                 "Предложи 3-5 идей полезных инструментов или скриптов на основе нейросетей или Python. "
                 "Кратко опиши назначение каждого, чтобы пользователь мог выбрать."
             )
-
             suggestions = await analyze_message(suggestion_prompt, prompt_chat, mode="chat")
             logging.info(f"[handle_message] 💡 Идеи, предложенные пользователю:\n{suggestions}")
 
-            reply_text = suggestions.get("reply", "")
-            ideas = suggestions.get("params", {}).get("идеи", [])
-
-            if ideas:
-                formatted = "\n\n".join([
-                    f"🛠️ *{idea['название']}*\n{idea['описание']}" for idea in ideas
-                ])
-                full_reply = f"{reply_text}\n\n{formatted}"
+            # 🧠 Поддержка формата JSON с полем params
+            if isinstance(suggestions, dict):
+                ideas = suggestions.get("params", {}).get("идеи")
+                if ideas:
+                    text_response = "🧠 Вот несколько идей:\n"
+                    for idea in ideas:
+                        title = idea.get("название", "Без названия")
+                        description = idea.get("описание", "Без описания")
+                        text_response += f"\n📌 *{title}*\n{description}\n"
+                    await message.answer(text_response, parse_mode="Markdown")
+                else:
+                    await message.answer(suggestions.get("reply", "Готов обсудить идеи!"))
             else:
-                full_reply = reply_text
-
-            await message.answer(full_reply, parse_mode="Markdown")
+                await message.answer(suggestions)
             return
 
-        logging.info(f"[handle_message] 🔁 Продолжается обсуждение идеи с {user_id}.")
+        # Просто уточнение
         await message.answer(reply)
         return
 
-    # 🛑 Неизвестный статус
-    logging.warning(f"[handle_message] ⚠️ Неизвестный статус от ИИ: {status}")
+    # Неизвестный статус
+    logging.warning(f"[handle_message] ⚠️ Неизвестный статус: {status}")
     await message.answer("⚠️ Что-то пошло не так. Попробуй переформулировать запрос.")
 
 
