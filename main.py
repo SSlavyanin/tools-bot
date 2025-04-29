@@ -115,19 +115,37 @@ async def analyze_message(history: str, prompt, mode="chat"):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers)
-            logging.debug(f"Ответ от OpenRouter: {response.text}")  # Логируем ответ
-            response.raise_for_status()  # Проверка статуса ответа
-            result = response.json()
-            content = result["choices"][0]["message"]["content"]
+            logging.debug(f"[analyze_message] 📥 Ответ от OpenRouter:\n{response.text}")
+            response.raise_for_status()
 
+            try:
+                result = response.json()
+            except Exception as json_error:
+                logging.error(f"[analyze_message] ❌ Ошибка парсинга JSON: {json_error}")
+                return {
+                    "status": "need_more_info",
+                    "reply": "⚠️ Не удалось распознать ответ от модели. Попробуй переформулировать."
+                }
+
+            content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if not content:
+                logging.warning("[analyze_message] ❗️Пустой content в ответе.")
+                return {
+                    "status": "need_more_info",
+                    "reply": "Ответ от модели был пуст. Попробуй ещё раз описать задачу."
+                }
+
+            logging.debug(f"[analyze_message] 🧠 Содержимое content:\n{content}")
             result_dict = extract_json(content)
+
             if not result_dict:
-                logging.error("Не удалось извлечь JSON из ответа.")
+                logging.error("[analyze_message] ❌ Не удалось извлечь JSON из содержимого.")
                 return {
                     "status": "need_more_info",
                     "reply": "Извини, я не понял твою задачу. Можешь объяснить чуть подробнее?"
                 }
 
+            logging.info(f"[analyze_message] ✅ Успешный разбор результата: {result_dict}")
             return {
                 "status": result_dict.get("status", "need_more_info"),
                 "reply": result_dict.get("reply"),
@@ -136,11 +154,11 @@ async def analyze_message(history: str, prompt, mode="chat"):
             }
 
     except httpx.RequestError as e:
-        logging.error(f"Ошибка при запросе к OpenRouter: {e}")
-        return {"status": "need_more_info", "reply": "Ошибка при запросе к OpenRouter."}
+        logging.error(f"[analyze_message] 🔌 Ошибка при запросе к OpenRouter: {e}")
+        return {"status": "need_more_info", "reply": "Ошибка при соединении с OpenRouter."}
 
     except Exception as e:
-        logging.error(f"Произошла ошибка: {e}")
+        logging.error(f"[analyze_message] ❗️ Произошла непредвиденная ошибка: {e}")
         return {"status": "need_more_info", "reply": "Произошла непредвиденная ошибка."}
 
 
