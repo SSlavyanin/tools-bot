@@ -85,12 +85,24 @@ async def ping_render():
 
 # 🧠 Парсинг JSON из текста
 def extract_json(text: str) -> dict:
+    logging.debug(f"[extract_json] 🔍 Пытаемся извлечь JSON из текста:\n{text}")
     try:
         start = text.index("{")
         end = text.rindex("}") + 1
-        return json.loads(text[start:end])
-    except Exception:
-        return None
+        json_str = text[start:end]
+        result = json.loads(json_str)
+        logging.debug(f"[extract_json] ✅ Успешно извлечён JSON:\n{result}")
+        return result
+    except ValueError as ve:
+        logging.error(f"[extract_json] ❌ Ошибка при поиске фигурных скобок: {ve}")
+    except json.JSONDecodeError as je:
+        logging.error(f"[extract_json] ❌ Ошибка при разборе JSON: {je}")
+        logging.debug(f"[extract_json] 🚫 Проблемный фрагмент:\n{text[start:end]}")
+    except Exception as e:
+        logging.error(f"[extract_json] ❌ Неизвестная ошибка: {e}")
+
+    return None
+
         
 
 async def analyze_message(history: str, prompt, mode="chat"):
