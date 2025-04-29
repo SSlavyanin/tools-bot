@@ -337,7 +337,7 @@ async def handle_message(message: types.Message):
     logging.info(f"[handle_message] 💬 История пользователя {user_id}:\n{combined_history}")
 
     # Отправляем в ИИ анализ концепции
-    logging.info("[handle_message] ⏳ Отправка в summarize_requirements...")
+    logging.info(f"[handle_message] ⏳ Отправка в summarize_requirements...")
     result = await summarize_requirements(combined_history, prompt_chat)
     logging.info(f"[handle_message] 📥 Ответ анализа идеи: {result}")
 
@@ -354,7 +354,6 @@ async def handle_message(message: types.Message):
     # 🧠 ИИ не понял до конца — смотрим, не просит ли юзер идеи
     if status == 'need_more_info':
         logging.info(f"[handle_message] 🤔 ИИ не определился — проверяем, просит ли {user_id} идеи.")
-
         if any(kw in text for kw in ['предложи', 'идею', 'идеи', 'варианты', 'подкинь', 'не знаю']):
             logging.info(f"[handle_message] 🔍 Обнаружен запрос на генерацию идей от {user_id}")
 
@@ -365,24 +364,24 @@ async def handle_message(message: types.Message):
             )
 
             suggestions = await analyze_message(suggestion_prompt, prompt_chat, mode="chat")
-            logging.info(f"[handle_message] 💡 Идеи, предложенные пользователю: {suggestions}")
+            logging.info(f"[handle_message] 💡 Идеи, предложенные пользователю:\n{suggestions}")
 
-            await message.answer(suggestions.get("reply") if isinstance(suggestions, dict) else str(suggestions))
+            reply_text = suggestions.get("reply", "")
+            ideas = suggestions.get("params", {}).get("идеи", [])
+
+            if ideas:
+                formatted = "\n\n".join([
+                    f"🛠️ *{idea['название']}*\n{idea['описание']}" for idea in ideas
+                ])
+                full_reply = f"{reply_text}\n\n{formatted}"
+            else:
+                full_reply = reply_text
+
+            await message.answer(full_reply, parse_mode="Markdown")
             return
 
-        # 👇 Патч: если не просит идеи явно — всё равно попробуем подбросить варианты после первой неудачи
-        logging.info(f"[handle_message] ⚙️ Пробуем подбросить идеи, даже без прямой просьбы...")
-
-        followup_prompt = (
-            "Пользователь не дал конкретного описания. "
-            "Подкинь ему 3 идеи инструментов по его предыдущим сообщениям. "
-            "Старайся угадать возможную цель, чтобы продолжить обсуждение."
-        )
-
-        ideas = await analyze_message(combined_history + "\n\n" + followup_prompt, prompt_chat, mode="chat")
-        logging.info(f"[handle_message] 💬 Ответ на авто-подбор идей: {ideas}")
-
-        await message.answer(ideas.get("reply") if isinstance(ideas, dict) else str(ideas))
+        logging.info(f"[handle_message] 🔁 Продолжается обсуждение идеи с {user_id}.")
+        await message.answer(reply)
         return
 
     # 🛑 Неизвестный статус
