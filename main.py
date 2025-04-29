@@ -148,19 +148,41 @@ async def analyze_message(history: str, prompt, mode="chat"):
 # 🧠 Функция анализа требований в режиме чата
 async def summarize_requirements(messages_text, system_prompt):
     try:
+        logging.info("[summarize_requirements] Отправка текста в analyze_message()")
         response = await analyze_message(messages_text, system_prompt, mode="chat")
-        logging.info(f"[summarize_requirements] Получен ответ:\n{response}")
+        logging.info(f"[summarize_requirements] Получен исходный ответ:\n{response}")
 
-        # Проверяем сразу словарь
+        # Если ответ уже в виде словаря — отлично
         if isinstance(response, dict):
+            logging.info("[summarize_requirements] Ответ уже является словарём, возвращаем напрямую.")
             return response
-        else:
-            logging.warning("[summarize_requirements] Ответ был не словарём, пробуем загрузить как JSON.")
-            return json.loads(response)
+
+        # Попытка восстановить JSON из текста
+        logging.warning("[summarize_requirements] Ответ не словарь. Пробуем извлечь JSON вручную.")
+        start = response.find('{')
+        end = response.rfind('}') + 1
+        maybe_json = response[start:end]
+
+        logging.info(f"[summarize_requirements] Извлекаемый JSON:\n{maybe_json}")
+
+        parsed = json.loads(maybe_json)
+        logging.info(f"[summarize_requirements] Успешно распарсили JSON: {parsed}")
+        return parsed
+
+    except json.JSONDecodeError as json_err:
+        logging.error(f"[summarize_requirements] Ошибка JSON-декодирования: {json_err}")
+        logging.debug(f"[summarize_requirements] Невозможно распарсить это как JSON:\n{response}")
+        return {
+            "status": "need_more_info",
+            "reply": "Ответ получен, но не удалось его обработать. Попробуй переформулировать или уточни, что ты хочешь.",
+        }
 
     except Exception as e:
-        logging.error(f"[summarize_requirements] Ошибка при обработке ответа: {e}")
-        return {"status": "need_more_info", "reply": "Извини, я не смог обработать твой ответ. Попробуй переформулировать задачу."}
+        logging.error(f"[summarize_requirements] Общая ошибка: {e}", exc_info=True)
+        return {
+            "status": "need_more_info",
+            "reply": "Извини, возникла ошибка при обработке. Попробуй ещё раз.",
+        }
 
 
 
@@ -259,53 +281,69 @@ async def handle_tool_request(callback_query: types.CallbackQuery):
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
     text = message.text.strip().lower()
-    logging.info(f"[handle_message] Сообщение от {user_id}: {text}")
+    logging.info(f"[handle_message] 📩 Сообщение от {user_id}: {text}")
 
+    # Получаем текущий режим пользователя
     mode = user_modes.get(user_id, 'chat')
+    logging.info(f"[handle_message] 🔄 Текущий режим: {mode}")
 
-    # Подтверждение перехода в режим генерации
+    # Режим ожидания подтверждения на генерацию кода
     if mode == 'waiting_confirmation':
-        if text in ['готов', 'давай', 'поехали', 'ок', 'yes']:
-            user_modes[user_id] = 'code'
-            await message.answer("🚀 Отлично! Переходим к составлению технического задания.")
-            logging.info(f"[handle_message] Пользователь {user_id} подтвердил переход в режим code.")
-            return
+        if text in ['готов', 'го', 'давай', 'поехали']:
+            user_modes[user_id] = 'need_confirmation'
+            logging.info(f"[handle_message] ✅ Пользователь подтвердил создание инструмента.")
+            await message.answer("🚀 Подтверждение получено! Переходим к созданию инструмента.")
         else:
-            await message.answer("✋ Напиши 'Готов', если хочешь перейти к созданию ТЗ и программы.")
-            logging.info(f"[handle_message] Ожидание подтверждения от пользователя {user_id}.")
-            return
-
-    # Обработка режима code
-    if mode == 'code':
-        await process_code_mode(message)
+            logging.info(f"[handle_message] ⏳ Ожидание подтверждения от пользователя {user_id}.")
+            await message.answer("✋ Напиши 'Готов', если хочешь приступить к созданию инструмента.")
         return
 
-    # Режим обсуждения (chat)
+    # == Режим обсуждения идеи ==
+    # Обновляем историю диалога
     history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
     history["history"].append(text)
     history["last_active"] = time.time()
-
     combined_history = "\n".join(history["history"])
+    logging.info(f"[handle_message] 💬 История пользователя {user_id}:\n{combined_history}")
+
+    # Отправляем в ИИ анализ концепции
     result = await summarize_requirements(combined_history, prompt_chat)
-    logging.info(f"[handle_message] Ответ анализа идеи: {result}")
+    logging.info(f"[handle_message] 📥 Ответ анализа идеи: {result}")
 
     status = result.get('status')
     reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
 
-    if status == 'ready_to_start_code_phase':
-        # Сохраняем назначение (goal) в сессию
-        sessions[user_id]["goal"] = result.get('goal', 'неопределено')
+    # ✅ Готов перейти к конкретизации
+    if status == 'ready_to_generate':
         user_modes[user_id] = 'waiting_confirmation'
-        await message.answer(
-            f"✅ {reply}\n\nХочешь перейти к составлению ТЗ и созданию инструмента? Напиши 'Готов'."
-        )
-        logging.info(f"[handle_message] Предложен переход в режим code для {user_id}.")
-    elif status == 'need_more_info':
+        logging.info(f"[handle_message] 🟢 Инструмент определён, ожидаем подтверждение от {user_id}")
+        await message.answer(f"✅ {reply} Напиши 'Готов', чтобы подтвердить и начать создание инструмента.")
+        return
+
+    # 🧠 ИИ не понял до конца — смотрим, не просит ли юзер идеи
+    if status == 'need_more_info':
+        if any(kw in text for kw in ['предложи', 'идею', 'идеи', 'варианты', 'подкинь', 'не знаю']):
+            logging.info(f"[handle_message] 🤔 Пользователь {user_id} просит сгенерировать идеи.")
+
+            suggestion_prompt = (
+                "Пользователь пока не определился с инструментом. "
+                "Предложи 3-5 идей полезных инструментов или скриптов на основе нейросетей или Python. "
+                "Кратко опиши назначение каждого, чтобы пользователь мог выбрать."
+            )
+
+            suggestions = await analyze_message(suggestion_prompt, prompt_chat, mode="chat")
+            logging.info(f"[handle_message] 💡 Идеи, предложенные пользователю:\n{suggestions}")
+            await message.answer(suggestions if isinstance(suggestions, str) else suggestions.get("reply", str(suggestions)))
+            return
+
+        logging.info(f"[handle_message] 🔁 Продолжается обсуждение идеи с {user_id}.")
         await message.answer(reply)
-        logging.info(f"[handle_message] Продолжается обсуждение идеи с {user_id}.")
-    else:
-        await message.answer("⚠️ Что-то непонятное. Попробуешь переформулировать?")
-        logging.warning(f"[handle_message] Неизвестный статус от summarize для {user_id}: {status}")
+        return
+
+    # 🛑 Неизвестный статус
+    logging.warning(f"[handle_message] ⚠️ Неизвестный статус от ИИ: {status}")
+    await message.answer("⚠️ Что-то пошло не так. Попробуй переформулировать запрос.")
+
 
 
 async def process_code_mode(message: types.Message):
