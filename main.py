@@ -17,6 +17,8 @@ from collections import defaultdict, deque
 # Отслеживание подтверждения генерации
 user_states = {}
 
+user_goals = {}  # user_id -> goal (назначение будущего инструмента)
+
 # Режимы работы пользователей: 'chat' или 'code'
 user_modes = defaultdict(lambda: 'chat')
 
