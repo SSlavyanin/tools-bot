@@ -162,6 +162,27 @@ async def summarize_requirements(messages_text, system_prompt):
 
 
 
+async def summarize_code_details(user_input, system_prompt):
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_input}
+    ]
+
+    try:
+        response = await call_openrouter(messages)
+        return {
+            "status": "ok",
+            "reply": response
+        }
+    except Exception as e:
+        logging.error(f"[summarize_code_details] Ошибка при генерации: {e}")
+        return {
+            "status": "error",
+            "reply": "Ошибка при генерации технического задания. Попробуй ещё раз."
+        }
+
+
+
 # 🛠 Генерация кода инструмента
 def generate_code(task, params):
     lines = [f"# Инструмент: {task}", "# Параметры:"]
@@ -240,37 +261,67 @@ async def handle_message(message: types.Message):
 
     mode = user_modes.get(user_id, 'chat')
 
+    # Подтверждение перехода в режим генерации
     if mode == 'waiting_confirmation':
-        if text in ['готов', 'го', 'давай', 'поехали']:
-            user_modes[user_id] = 'need_confirmation'
-            await message.answer("🚀 Подтверждение получено! Давайте продолжим и создадим инструмент.")
-            logging.info(f"[handle_message] Пользователь {user_id} подтвердил создание инструмента.")
+        if text in ['готов', 'давай', 'поехали', 'ок', 'yes']:
+            user_modes[user_id] = 'code'
+            await message.answer("🚀 Отлично! Переходим к составлению технического задания.")
+            logging.info(f"[handle_message] Пользователь {user_id} подтвердил переход в режим code.")
+            return
         else:
-            await message.answer("✋ Напиши 'Готов', если хочешь создать инструмент.")
+            await message.answer("✋ Напиши 'Готов', если хочешь перейти к созданию ТЗ и программы.")
             logging.info(f"[handle_message] Ожидание подтверждения от пользователя {user_id}.")
+            return
+
+    # Обработка режима code
+    if mode == 'code':
+        await process_code_mode(message)
         return
 
-    # Режим chat
+    # Режим обсуждения (chat)
     history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
     history["history"].append(text)
     history["last_active"] = time.time()
 
     combined_history = "\n".join(history["history"])
     result = await summarize_requirements(combined_history, prompt_chat)
-    logging.info(f"[handle_message] Ответ анализа: {result}")
+    logging.info(f"[handle_message] Ответ анализа идеи: {result}")
 
     status = result.get('status')
     reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
 
-    if status == 'ready_to_generate':
+    if status == 'ready_to_start_code_phase':
+        # Сохраняем назначение (goal) в сессию
+        sessions[user_id]["goal"] = result.get('goal', 'неопределено')
         user_modes[user_id] = 'waiting_confirmation'
-        await message.answer(f"✅ {reply} Напиши 'Готов', чтобы подтвердить создание инструмента.")
+        await message.answer(
+            f"✅ {reply}\n\nХочешь перейти к составлению ТЗ и созданию инструмента? Напиши 'Готов'."
+        )
+        logging.info(f"[handle_message] Предложен переход в режим code для {user_id}.")
     elif status == 'need_more_info':
         await message.answer(reply)
-        logging.info(f"[handle_message] Ответ пользователя {user_id} продолжает уточняться.")
+        logging.info(f"[handle_message] Продолжается обсуждение идеи с {user_id}.")
     else:
-        await message.answer("⚠️ Что-то непонятное в запросе. Давай попробуем переформулировать.")
-        logging.warning(f"[handle_message] Неизвестный статус для {user_id}: {status}")
+        await message.answer("⚠️ Что-то непонятное. Попробуешь переформулировать?")
+        logging.warning(f"[handle_message] Неизвестный статус от summarize для {user_id}: {status}")
+
+
+async def process_code_mode(message: types.Message):
+    user_id = message.from_user.id
+    text = message.text.strip()
+    logging.info(f"[process_code_mode] Обработка сообщения в режиме code от {user_id}: {text}")
+
+    # Получаем цель, сформулированную ранее
+    session = sessions.get(user_id, {})
+    goal = session.get("goal", "неизвестный инструмент")
+
+    prompt = prompt_code.replace("<<GOAL>>", goal)
+
+    result = await summarize_code_details(text, prompt)
+    reply = result.get("reply", "Что-то пошло не так при составлении ТЗ.")
+
+    await message.answer(reply)
+    logging.info(f"[process_code_mode] Ответ отправлен пользователю {user_id}")
 
         
 
