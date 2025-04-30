@@ -342,14 +342,10 @@ async def handle_message(message: types.Message):
     logging.info(f"[handle_message] ⏳ Отправка в summarize_requirements...")
     result = await summarize_requirements(combined_history, prompt_chat)
     
-    # Формируем идеи для вывода в текстовом формате
-    ideas_text = "\n".join([f"{idea['название']}: {idea['описание']}" for idea in result.get('params', {}).get('идеи', [])]) 
-    # Основной ответ с идеями
-    reply_text = f"{result['reply']}\n\nПредложенные идеи:\n{ideas_text}"
-    # Логирование идеи
-    logging.info(f"[handle_message] 💡 Предложенные идеи:\n{ideas_text}")  
-    # Запоминаем идеи в сессии для дальнейшего использования
-    sessions[user_id]['ideas'] = result.get('params', {}).get('идеи', [])
+    reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
+    ideas = result.get('params', {}).get('идеи', [])
+    ideas_text = "\n".join([f"📌 *{i['название']}*\n{i['описание']}" for i in ideas]) if ideas else ""
+    reply_text = f"{reply}\n\n{ideas_text}" if ideas_text else reply
     
     logging.info(f"[handle_message] 📥 Ответ анализа идеи: {result}")
 
@@ -394,7 +390,13 @@ async def handle_message(message: types.Message):
                 else:
                     await message.answer(suggestions.get("reply", "Готов обсудить идеи!"))
             else:
-                await message.answer(reply_text, parse_mode="Markdown")
+                if isinstance(suggestions, dict):
+                    reply = suggestions.get("reply", "Готов обсудить идеи!")
+                    logging.info(f"[handle_message] 📤 Отправка в Telegram:\n{reply}")
+                    await message.answer(reply)
+                else:
+                    logging.info(f"[handle_message] 📤 Отправка в Telegram:\n{reply}")
+                    await message.answer(str(suggestions))
             return
 
         # Просто уточнение
