@@ -46,8 +46,10 @@ app = Flask(__name__)
 
 # обновления сессии
 def update_user_session(user_id, user_message):
-    user_sessions[user_id].append({"role": "user", "content": user_message})
+    sessions[user_id]["history"].append({"role": "user", "content": user_message})
+    sessions[user_id]["last_active"] = time.time()
     logging.info(f"📚 Обновлена сессия пользователя {user_id}: {user_message[:50]}...")
+
 
 
 # Функция для чтения system prompt из файла
