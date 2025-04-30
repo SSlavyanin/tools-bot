@@ -346,7 +346,7 @@ async def handle_message(message: types.Message):
     # Логирование идеи
     logging.info(f"[handle_message] 💡 Предложенные идеи:\n{ideas_text}")  
     # Запоминаем идеи в сессии для дальнейшего использования
-    user_sessions[user_id]['ideas'] = result.get('params', {}).get('идеи', [])
+    sessions[user_id]['ideas'] = result.get('params', {}).get('идеи', [])
     
     logging.info(f"[handle_message] 📥 Ответ анализа идеи: {result}")
 
