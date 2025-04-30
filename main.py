@@ -370,7 +370,7 @@ async def handle_message(message: types.Message):
 
     # === Юзер просит идеи ===
     if status == 'need_more_info':
-        if any(kw in text for kw in ['предложи', 'идею', 'идеи', 'варианты', 'подкинь', 'не знаю']):
+        if any(kw in text for kw in ['предложи', 'идею', 'идеи', 'варианты', 'подкинь', 'не знаю']) and not result.get("params"):
             logging.info(f"[handle_message] 🔍 Обнаружен запрос на генерацию идей от {user_id}")
 
             suggestion_prompt = (
@@ -398,7 +398,7 @@ async def handle_message(message: types.Message):
             return
 
         # Просто уточнение
-        await message.answer(reply)
+        await message.answer(reply_text, parse_mode="Markdown")
         return
 
     # Неизвестный статус
