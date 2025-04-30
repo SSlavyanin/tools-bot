@@ -338,6 +338,16 @@ async def handle_message(message: types.Message):
     # === Анализ идеи ===
     logging.info(f"[handle_message] ⏳ Отправка в summarize_requirements...")
     result = await summarize_requirements(combined_history, prompt_chat)
+    
+    # Формируем идеи для вывода в текстовом формате
+    ideas_text = "\n".join([f"{idea['название']}: {idea['описание']}" for idea in result.get('params', {}).get('идеи', [])]) 
+    # Основной ответ с идеями
+    reply_text = f"{result['reply']}\n\nПредложенные идеи:\n{ideas_text}"
+    # Логирование идеи
+    logging.info(f"[handle_message] 💡 Предложенные идеи:\n{ideas_text}")  
+    # Запоминаем идеи в сессии для дальнейшего использования
+    user_sessions[user_id]['ideas'] = result.get('params', {}).get('идеи', [])
+    
     logging.info(f"[handle_message] 📥 Ответ анализа идеи: {result}")
 
     status = result.get('status')
@@ -381,7 +391,7 @@ async def handle_message(message: types.Message):
                 else:
                     await message.answer(suggestions.get("reply", "Готов обсудить идеи!"))
             else:
-                await message.answer(suggestions)
+                await message.answer(reply_text, parse_mode="Markdown")
             return
 
         # Просто уточнение
