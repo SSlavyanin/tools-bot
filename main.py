@@ -44,7 +44,7 @@ logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 
 
-# обновления сессии
+# Обновления сессии
 def update_user_session(user_id, user_message):
     sessions[user_id]["history"].append({"role": "user", "content": user_message})
     sessions[user_id]["last_active"] = time.time()
@@ -330,12 +330,13 @@ async def handle_message(message: types.Message):
             await message.answer("✋ Напиши 'Готов', если хочешь перейти к следующему этапу.")
         return
 
-    # === Обновление истории сессии ===
-    history = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
-    history["history"].append(text)
-    history["last_active"] = time.time()
-    combined_history = "\n".join(history["history"])
+   # === Обновление истории сессии с использованием функции update_user_session ===
+    session = sessions.setdefault(user_id, {"history": [], "last_active": time.time()})
+    update_user_session(user_id, text)
+    session["last_active"] = time.time()
+    combined_history = "\n".join([msg["content"] for msg in session["history"]])
     logging.info(f"[handle_message] 💬 История пользователя {user_id}:\n{combined_history}")
+
 
     # === Анализ идеи ===
     logging.info(f"[handle_message] ⏳ Отправка в summarize_requirements...")
