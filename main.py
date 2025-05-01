@@ -346,7 +346,7 @@ async def handle_message(message: types.Message):
     params = result.get('params', {})
     
     # Универсальный фильтр по ключам
-    interesting_keywords = ["идеи", "тип", "сайт", "пример"]
+    interesting_keywords = ["вопросы", "идеи", "тип", "сайт", "пример"]
     filtered_text = ""
     
     for key, value in params.items():
