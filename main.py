@@ -86,22 +86,25 @@ async def ping_render():
 
 
 # 🧠 Парсинг JSON из текста
-def extract_json(content):
+ 
+
+def extract_json(text: str) -> dict:
+    logging.debug(f"[extract_json] 🔍 Пытаемся извлечь JSON из текста:\n{text}")
     try:
-        decoder = json.JSONDecoder()
-        obj, idx = decoder.raw_decode(content)
-
-        # Логируем, если есть "лишнее" после JSON
-        remaining = content[idx:].strip()
-        if remaining:
-            logging.warning(f"[extract_json] ⚠️ Найден лишний текст после JSON: {remaining[:100]}...")
-
-        logging.info(f"[extract_json] ✅ Извлечён JSON: {obj}")
-        return obj
-    except json.JSONDecodeError as e:
-        logging.error(f"[extract_json] ❌ Ошибка при извлечении JSON: {e}")
+        start = text.index("{")
+        end = text.rindex("}") + 1
+        json_str = text[start:end]
+        result = json.loads(json_str)
+        logging.debug(f"[extract_json] ✅ Успешно извлечён JSON:\n{result}")
+        return result
+    except ValueError as ve:
+        logging.error(f"[extract_json] ❌ Ошибка при поиске фигурных скобок: {ve}")
+    except json.JSONDecodeError as je:
+        logging.error(f"[extract_json] ❌ Ошибка при разборе JSON: {je}")
+        logging.debug(f"[extract_json] 🚫 Проблемный фрагмент:\n{text[start:end]}")
+    except Exception as e:
+        logging.error(f"[extract_json] ❌ Неизвестная ошибка: {e}")
         return None
-
         
 
 async def analyze_message(history: str, prompt, mode="chat"):
