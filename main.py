@@ -342,10 +342,28 @@ async def handle_message(message: types.Message):
     logging.info(f"[handle_message] ⏳ Отправка в summarize_requirements...")
     result = await summarize_requirements(combined_history, prompt_chat)
     
-    reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
-    ideas = result.get('params', {}).get('идеи', [])
-    ideas_text = "\n".join([f"📌 *{i['название']}*\n{i['описание']}" for i in ideas]) if ideas else ""
-    reply_text = f"{reply}\n\n{ideas_text}" if ideas_text else reply
+    params = result.get('params', {})
+    
+    # Универсальный фильтр по ключам
+    interesting_keywords = ["идеи", "тип", "сайт", "пример"]
+    filtered_text = ""
+    
+    for key, value in params.items():
+        if any(kw in key.lower() for kw in interesting_keywords):
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        entry = "\n".join([f"*{k.capitalize()}*: {v}" for k, v in item.items()])
+                        filtered_text += f"\n\n{entry}"
+                    else:
+                        filtered_text += f"\n- {item}"
+            elif isinstance(value, dict):
+                entry = "\n".join([f"*{k.capitalize()}*: {v}" for k, v in value.items()])
+                filtered_text += f"\n\n{entry}"
+            else:
+                filtered_text += f"\n\n*{key.capitalize()}*: {value}"
+    
+    reply_text = f"{reply}\n{filtered_text}"
     
     logging.info(f"[handle_message] 📥 Ответ анализа идеи: {result}")
 
@@ -378,19 +396,12 @@ async def handle_message(message: types.Message):
             logging.info(f"[handle_message] 💡 Идеи, предложенные пользователю:\n{suggestions}")
 
             # 🧠 Поддержка формата JSON с полем params
-            if isinstance(suggestions, dict):
-                ideas = suggestions.get("params", {}).get("идеи")
-                if ideas:
-                    text_response = "🧠 Вот несколько идей:\n"
-                    for idea in ideas:
-                        title = idea.get("название", "Без названия")
-                        description = idea.get("описание", "Без описания")
-                        text_response += f"\n📌 *{title}*\n{description}\n"
-                    await message.answer(text_response, parse_mode="Markdown")
-                else:
-                    await message.answer(suggestions.get("reply", "Готов обсудить идеи!"))
-            else:
-                await message.answer(reply_text, parse_mode="Markdown")
+            reply = suggestions.get('reply', "Готов обсудить идеи!")
+            ideas = suggestions.get('params', {}).get('идеи', [])
+            ideas_text = "\n".join([f"📌 *{i['название']}*\n{i['описание']}" for i in ideas]) if ideas else ""
+            reply_text = f"{reply}\n\n{ideas_text}" if ideas_text else reply
+            
+            await message.answer(reply_text, parse_mode="Markdown")
             return
 
         # Просто уточнение
