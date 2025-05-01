@@ -121,7 +121,7 @@ async def analyze_message(history: str, prompt, mode="chat"):
         "Content-Type": "application/json"
     }
 
-    payload = {"model": "meta-llama/llama-4-maverick", "messages": prompt}
+    payload = {"model": "google/gemma-3-27b-it", "messages": prompt}
 
     try:
         async with httpx.AsyncClient() as client:
