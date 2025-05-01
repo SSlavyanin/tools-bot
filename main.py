@@ -345,31 +345,13 @@ async def handle_message(message: types.Message):
     reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
     params = result.get('params', {})
     
-    # Универсальный фильтр по ключам
-    interesting_keywords = ["вопросы", "идеи", "тип", "сайт", "пример"]
-    filtered_text = ""
-    
-    for key, value in params.items():
-        if any(kw in key.lower() for kw in interesting_keywords):
-            if isinstance(value, list):
-                for item in value:
-                    if isinstance(item, dict):
-                        entry = "\n".join([f"*{k.capitalize()}*: {v}" for k, v in item.items()])
-                        filtered_text += f"\n\n{entry}"
-                    else:
-                        filtered_text += f"\n- {item}"
-            elif isinstance(value, dict):
-                entry = "\n".join([f"*{k.capitalize()}*: {v}" for k, v in value.items()])
-                filtered_text += f"\n\n{entry}"
-            else:
-                filtered_text += f"\n\n*{key.capitalize()}*: {value}"
-    
-    reply_text = f"{reply}\n{filtered_text}"
-    
+    ideas = result.get('params', {}).get('вопросы', [])
+    ideas_text = "\n".join([f"📌 *{i['название']}*\n{i['описание']}" for i in ideas]) if ideas else ""
+    reply_text = f"{reply}\n\n{ideas_text}" if ideas_text else reply
+
     logging.info(f"[handle_message] 📥 Ответ анализа идеи: {result}")
 
     status = result.get('status')
-    reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
 
     # === Предложение перейти к следующему этапу ===
     if status == 'ready_to_start_code_phase':
@@ -398,7 +380,7 @@ async def handle_message(message: types.Message):
 
             # 🧠 Поддержка формата JSON с полем params
             reply = suggestions.get('reply', "Готов обсудить идеи!")
-            ideas = suggestions.get('params', {}).get('идеи', [])
+            ideas = suggestions.get('params', {}).get('вопросы', [])
             ideas_text = "\n".join([f"📌 *{i['название']}*\n{i['описание']}" for i in ideas]) if ideas else ""
             reply_text = f"{reply}\n\n{ideas_text}" if ideas_text else reply
             
