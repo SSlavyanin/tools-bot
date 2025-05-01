@@ -377,12 +377,20 @@ async def handle_message(message: types.Message):
             suggestions = await analyze_message(suggestion_prompt, prompt_chat, mode="chat")
             logging.info(f"[handle_message] 💡 Идеи, предложенные пользователю:\n{suggestions}")
 
-            reply = suggestions.get('reply', "Готов обсудить идеи!")
-            ideas = suggestions.get('params', {}).get('идеи', [])
-            ideas_text = "\n".join([f"📌 *{i['название']}*\n{i['описание']}" for i in ideas]) if ideas else ""
-            reply_text = f"{reply}\n\n{ideas_text}" if ideas_text else reply
-            
-            await message.answer(reply_text, parse_mode="Markdown")
+            # 🧠 Поддержка формата JSON с полем params
+            if isinstance(suggestions, dict):
+                ideas = suggestions.get("params", {}).get("идеи")
+                if ideas:
+                    text_response = "🧠 Вот несколько идей:\n"
+                    for idea in ideas:
+                        title = idea.get("название", "Без названия")
+                        description = idea.get("описание", "Без описания")
+                        text_response += f"\n📌 *{title}*\n{description}\n"
+                    await message.answer(text_response, parse_mode="Markdown")
+                else:
+                    await message.answer(suggestions.get("reply", "Готов обсудить идеи!"))
+            else:
+                await message.answer(reply_text, parse_mode="Markdown")
             return
 
         # Просто уточнение
