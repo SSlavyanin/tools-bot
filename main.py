@@ -364,8 +364,9 @@ async def handle_message(message: types.Message):
             else:
                 filtered_text += f"\n\n*{key.capitalize()}*: {value}"
     
-    reply_text = f"{reply}\n{filtered_text}"
-
+    ideas = result.get('params', {}).get('идеи', [])
+    ideas_text = "\n".join([f"📌 *{i['название']}*\n{i['описание']}" for i in ideas]) if ideas else ""
+    reply_text = f"{reply}\n\n{ideas_text}" if ideas_text else reply
     
     logging.info(f"[handle_message] 📥 Ответ анализа идеи: {result}")
 
