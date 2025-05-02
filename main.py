@@ -14,6 +14,8 @@ from io import BytesIO
 from zipfile import ZipFile
 from collections import defaultdict, deque
 
+user_sessions = {}
+
 # Отслеживание подтверждения генерации
 user_states = {}
 
