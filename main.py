@@ -69,8 +69,6 @@ def load_system_prompts():
 # Пример использования system_prompt
 prompt_chat, prompt_code = load_system_prompts()
 
-# system_prompt_chat = chat_system_prompt()
-# system_prompt_code = code_system_prompt()
 
 
 # 🔁 ФУНКЦИЯ ДЛЯ ПИНГОВАНИЯ RENDER
@@ -86,8 +84,6 @@ async def ping_render():
 
 
 # 🧠 Парсинг JSON из текста
- 
-
 def extract_json(text: str) -> dict:
     logging.debug(f"[extract_json] 🔍 Пытаемся извлечь JSON из текста:\n{text}")
     try:
@@ -258,10 +254,8 @@ def create_zip(task, code: str):
     zip_buffer.name = f"{task.replace(' ', '_')}.zip"
     return zip_buffer
     
-
+ """Формирует скрипт, упаковывает в архив и отправляет пользователю"""
 async def send_generated_tool(message, result):
-    """Формирует скрипт, упаковывает в архив и отправляет пользователю"""
-
     user_id = message.from_user.id
 
     # 🛠 Генерация кода на основе результата
@@ -346,7 +340,21 @@ async def handle_message(message: types.Message):
     params = result.get('params', {})
     
     ideas = result.get('params', {}).get('вопросы', [])
-    ideas_text = "\n".join([f"📌 *{i['название']}*\n{i['описание']}" for i in ideas]) if ideas else ""
+    
+    if isinstance(ideas, list):
+        if all(isinstance(i, dict) for i in ideas):
+            ideas_text = "\n".join([f"📌 *{i.get('название', 'Без названия')}*\n{i.get('описание', 'Без описания')}" for i in ideas])
+        elif all(isinstance(i, str) for i in ideas):
+            ideas_text = "\n".join([f"📌 {i}" for i in ideas])
+        else:
+            logging.warning(f"[ideas] Смешанный или нестандартный список: {ideas}")
+            ideas_text = "\n".join([str(i) for i in ideas])
+    elif isinstance(ideas, str):
+        ideas_text = f"📌 {ideas}"
+    else:
+        logging.error(f"[ideas] Неизвестный формат: {type(ideas)} | Содержимое: {ideas}")
+        ideas_text = "❌ Ошибка: формат идей не распознан."
+
     reply_text = f"{reply}\n\n{ideas_text}" if ideas_text else reply
 
     logging.info(f"[handle_message] 📥 Ответ анализа идеи: {result}")
