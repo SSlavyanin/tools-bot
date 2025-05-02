@@ -254,7 +254,7 @@ def create_zip(task, code: str):
     zip_buffer.name = f"{task.replace(' ', '_')}.zip"
     return zip_buffer
     
- """Формирует скрипт, упаковывает в архив и отправляет пользователю"""
+"""Формирует скрипт, упаковывает в архив и отправляет пользователю"""
 async def send_generated_tool(message, result):
     user_id = message.from_user.id
 
@@ -340,20 +340,21 @@ async def handle_message(message: types.Message):
     params = result.get('params', {})
     
     ideas = result.get('params', {}).get('вопросы', [])
-    
-        if isinstance(ideas, list):
-            if all(isinstance(i, dict) for i in ideas):
-                ideas_text = "\n".join([f"📌 *{i.get('название', 'Без названия')}*\n{i.get('описание', 'Без описания')}" for i in ideas])
-            elif all(isinstance(i, str) for i in ideas):
-                ideas_text = "\n".join([f"📌 {i}" for i in ideas])
-            else:
-                logging.warning(f"[ideas] Смешанный или нестандартный список: {ideas}")
-                ideas_text = "\n".join([str(i) for i in ideas])
-        elif isinstance(ideas, str):
-            ideas_text = f"📌 {ideas}"
+
+    if isinstance(ideas, list):
+        if all(isinstance(i, dict) for i in ideas):
+            ideas_text = "\n".join([f"📌 *{i.get('название', 'Без названия')}*\n{i.get('описание', 'Без описания')}" for i in ideas])
+        elif all(isinstance(i, str) for i in ideas):
+            ideas_text = "\n".join([f"📌 {i}" for i in ideas])
         else:
-            logging.error(f"[ideas] Неизвестный формат: {type(ideas)} | Содержимое: {ideas}")
-            ideas_text = "❌ Ошибка: формат идей не распознан."
+            logging.warning(f"[ideas] Смешанный или нестандартный список: {ideas}")
+            ideas_text = "\n".join([str(i) for i in ideas])
+    elif isinstance(ideas, str):
+        ideas_text = f"📌 {ideas}"
+    else:
+        logging.error(f"[ideas] Неизвестный формат: {type(ideas)} | Содержимое: {ideas}")
+        ideas_text = "❌ Ошибка: формат идей не распознан."
+
 
     reply_text = f"{reply}\n\n{ideas_text}" if ideas_text else reply
 
