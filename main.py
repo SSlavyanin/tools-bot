@@ -341,19 +341,19 @@ async def handle_message(message: types.Message):
     
     ideas = result.get('params', {}).get('вопросы', [])
     
-    if isinstance(ideas, list):
-        if all(isinstance(i, dict) for i in ideas):
-            ideas_text = "\n".join([f"📌 *{i.get('название', 'Без названия')}*\n{i.get('описание', 'Без описания')}" for i in ideas])
-        elif all(isinstance(i, str) for i in ideas):
-            ideas_text = "\n".join([f"📌 {i}" for i in ideas])
+        if isinstance(ideas, list):
+            if all(isinstance(i, dict) for i in ideas):
+                ideas_text = "\n".join([f"📌 *{i.get('название', 'Без названия')}*\n{i.get('описание', 'Без описания')}" for i in ideas])
+            elif all(isinstance(i, str) for i in ideas):
+                ideas_text = "\n".join([f"📌 {i}" for i in ideas])
+            else:
+                logging.warning(f"[ideas] Смешанный или нестандартный список: {ideas}")
+                ideas_text = "\n".join([str(i) for i in ideas])
+        elif isinstance(ideas, str):
+            ideas_text = f"📌 {ideas}"
         else:
-            logging.warning(f"[ideas] Смешанный или нестандартный список: {ideas}")
-            ideas_text = "\n".join([str(i) for i in ideas])
-    elif isinstance(ideas, str):
-        ideas_text = f"📌 {ideas}"
-    else:
-        logging.error(f"[ideas] Неизвестный формат: {type(ideas)} | Содержимое: {ideas}")
-        ideas_text = "❌ Ошибка: формат идей не распознан."
+            logging.error(f"[ideas] Неизвестный формат: {type(ideas)} | Содержимое: {ideas}")
+            ideas_text = "❌ Ошибка: формат идей не распознан."
 
     reply_text = f"{reply}\n\n{ideas_text}" if ideas_text else reply
 
