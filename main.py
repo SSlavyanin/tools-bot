@@ -329,6 +329,8 @@ async def handle_message(message: types.Message):
 
 
     # === Анализ идеи ===
+    user_session = user_sessions.setdefault(user_id, {"messages": [], "last_interaction": time.time()})
+
     logging.info(f"[handle_message] ⏳ Отправка в summarize_requirements...")
     result = await summarize_requirements(combined_history, prompt_chat, user_session)
 
