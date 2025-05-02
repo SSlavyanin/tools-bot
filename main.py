@@ -330,7 +330,7 @@ async def handle_message(message: types.Message):
 
     # === Анализ идеи ===
     logging.info(f"[handle_message] ⏳ Отправка в summarize_requirements...")
-    result = await summarize_requirements(combined_history, prompt_chat)
+    result = await summarize_requirements(combined_history, prompt_chat, user_session)
 
     reply = result.get('reply', "Не совсем понял. Можешь переформулировать?")
     params = result.get('params', {})
