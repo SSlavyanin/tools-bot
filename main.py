@@ -302,6 +302,7 @@ async def handle_tool_request(callback_query: types.CallbackQuery):
 @dp.message_handler()
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
+    user_session = user_sessions.setdefault(user_id, {"messages": [], "last_interaction": time.time()})
     text = message.text.strip().lower()
     logging.info(f"[handle_message] 📩 Сообщение от {user_id}: {text}")
 
@@ -329,7 +330,6 @@ async def handle_message(message: types.Message):
 
 
     # === Анализ идеи ===
-    user_session = user_sessions.setdefault(user_id, {"messages": [], "last_interaction": time.time()})
 
     logging.info(f"[handle_message] ⏳ Отправка в summarize_requirements...")
     result = await summarize_requirements(combined_history, prompt_chat, user_session)
