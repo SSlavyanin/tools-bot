@@ -83,30 +83,26 @@ async def ping_render():
         await asyncio.sleep(300)  # каждые 14 минут
 
 
+
 # 🧠 Парсинг JSON из текста
 def extract_json(text: str) -> dict:
     logging.debug(f"[extract_json] 🔍 Пытаемся извлечь JSON из текста:\n{text}")
     try:
-        # Попытка найти начало и конец JSON в строке
         start = text.find("{")
         end = text.rfind("}") + 1
-
-        if start == -1 or end == -1:
-            logging.error(f"[extract_json] ❌ Не удалось найти фигурные скобки в тексте.")
-            return None
-        
-        json_str = text[start:end]
-        result = json.loads(json_str)
-        logging.debug(f"[extract_json] ✅ Успешно извлечён JSON:\n{result}")
-        return result
-    except ValueError as ve:
-        logging.error(f"[extract_json] ❌ Ошибка при поиске фигурных скобок: {ve}")
+        if start != -1 and end != -1:
+            json_str = text[start:end]
+            result = json.loads(json_str)
+            logging.debug(f"[extract_json] ✅ Успешно извлечён JSON:\n{result}")
+            return result
+        logging.warning(f"[extract_json] Не найдено фигурных скобок для JSON.")
+        return None
     except json.JSONDecodeError as je:
         logging.error(f"[extract_json] ❌ Ошибка при разборе JSON: {je}")
-        logging.debug(f"[extract_json] 🚫 Проблемный фрагмент:\n{text[start:end]}")
     except Exception as e:
         logging.error(f"[extract_json] ❌ Неизвестная ошибка: {e}")
     return None
+
 
         
 
@@ -180,44 +176,28 @@ async def analyze_message(history: str, prompt, mode="chat"):
 
 
 
+
 # 🧠 Функция анализа требований в режиме чата
-async def summarize_requirements(messages_text, system_prompt):
+async def summarize_requirements(messages_text, system_prompt, user_session):
     try:
         logging.info("[summarize_requirements] Отправка текста в analyze_message()")
         response = await analyze_message(messages_text, system_prompt, mode="chat")
         logging.info(f"[summarize_requirements] Получен исходный ответ:\n{response}")
 
-        # Включаем гибкую обработку полученных данных
+        # Если ответ уже в виде словаря — отлично
         if isinstance(response, dict):
-            # Если ответ — это словарь, извлекаем как есть
-            logging.info("[summarize_requirements] Ответ уже является словарём, возвращаем напрямую.")
+            logging.info("[summarize_requirements] Ответ уже является словарём, сохраняем в сессию.")
+            user_session['response_data'] = response
             return response
-        elif isinstance(response, str):
-            # Если ответ — это строка, просто возвращаем её как есть
-            logging.info("[summarize_requirements] Ответ — строка, возвращаем как есть.")
-            return {
-                "status": "need_more_info",
-                "reply": response,
-            }
 
-        # Попытка восстановить JSON из текста
-        logging.warning("[summarize_requirements] Ответ не словарь. Пробуем извлечь JSON вручную.")
-        start = response.find('{')
-        end = response.rfind('}') + 1
-        maybe_json = response[start:end]
+        # Сохраняем данные как неструктурированные для дальнейшего анализа
+        logging.warning("[summarize_requirements] Ответ не словарь. Сохраняем как неструктурированные данные.")
+        user_session['response_data'] = response
 
-        logging.info(f"[summarize_requirements] Извлекаемый JSON:\n{maybe_json}")
-
-        parsed = json.loads(maybe_json)
-        logging.info(f"[summarize_requirements] Успешно распарсили JSON: {parsed}")
-        return parsed
-
-    except json.JSONDecodeError as json_err:
-        logging.error(f"[summarize_requirements] Ошибка JSON-декодирования: {json_err}")
-        logging.debug(f"[summarize_requirements] Невозможно распарсить это как JSON:\n{response}")
+        # Переходим к обработке на втором этапе
         return {
             "status": "need_more_info",
-            "reply": "Ответ получен, но не удалось его обработать. Попробуй переформулировать или уточни, что ты хочешь.",
+            "reply": "Ответ получен, но не удалось его обработать. Попробуй переформулировать или уточни, что ты хочешь."
         }
 
     except Exception as e:
